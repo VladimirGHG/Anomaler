@@ -15,6 +15,7 @@ std::string SensorDataPoint::getTimestamp() const {
     return timestamp;
 }
 
+// Get current time in a human-readable format with milliseconds
 std::string SensorDataPoint::getCurrentTime() {
     auto now = std::chrono::system_clock::now();
     auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
@@ -33,6 +34,7 @@ std::string SensorDataPoint::getCurrentTime() {
 std::ostream& operator<<(std::ostream& os, const SensorDataPoint& p) {
     os << "value=";
 
+    // std::visit handles the variant type and prints the value
     std::visit([&](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
 
