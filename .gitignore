@@ -1,4 +1,11 @@
 .vscode/*
-builds/*
-anomaly
-test.json
+cpp_/builds/*
+py_analytics/.venv
+test.*
+vcpkg/packages/
+vcpkg/buildtrees/
+vcpkg/downloads/
+vcpkg/installed/
+vcpkg/.vcpkg-root
+vcpkg/vcpkg
+vcpkg/scripts/buildsystems/vcpkg.cmake.log

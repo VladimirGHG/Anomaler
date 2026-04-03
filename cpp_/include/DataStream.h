@@ -22,7 +22,6 @@ public:
 private:
     std::vector<SensorDataPoint> dataPoints;
 
-    static std::string dataValueToJson(const DataValue& value);
 };
 
 #endif

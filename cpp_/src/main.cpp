@@ -1,6 +1,9 @@
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include "DataPoint.h"
 #include "DataStream.h"
+#include "DataSender.h"
 
 int main() {
     SensorDataPoint data1(std::vector<std::string>{"hi", "hello", "hey"});
@@ -12,7 +15,14 @@ int main() {
     dataStream.addDataPoint(data2);
     dataStream.addDataPoint(data3);
 
-    std::cout << dataStream.getDataPoint() << "\n" << dataStream.getDataPoint() << std::endl;
+    while (true){
+        DataSender sender;
+        sender.send(dataStream);
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+    }
+    // dataStream.exportToJsonFile("test.json");
+    // dataStream.exportToCsvFile("test.csv");
+    // std::cout << dataStream.getDataPoint() << "\n" << dataStream.getDataPoint() << std::endl;
 
     return 0;
 }
