@@ -1,15 +1,24 @@
-VCPKG_INC = ./vcpkg/installed/arm64-osx/include
-VCPKG_LIB = ./vcpkg/installed/arm64-osx/lib
+VCPKG_ROOT = ./vcpkg/installed/arm64-osx
+VCPKG_INC  = $(VCPKG_ROOT)/include
+VCPKG_LIB  = $(VCPKG_ROOT)/lib
+
 INC = -I./include -I$(VCPKG_INC)
-LIB = -L$(VCPKG_LIB) -lzmq
+LIB = -L$(VCPKG_LIB) -lzmq -lCLI11 
 
-SRC = src/main.cpp src/DataPoint.cpp src/DataStream.cpp src/DataSender.cpp
+CXXFLAGS = -std=c++17 $(INC) -Wall
 
+SRC = src/main.cpp \
+      src/DataPoint.cpp \
+      src/DataStream.cpp \
+      src/DataSender.cpp \
+      src/sources/RandomSource.cpp \
+      src/sources/OutlierSource.cpp
+	  
 TARGET = builds/main
 
 all:
 	@mkdir -p builds
-	g++ -std=c++17 $(INC) $(SRC) $(LIB) -o $(TARGET)
+	g++ $(CXXFLAGS) $(SRC) $(LIB) -o $(TARGET)
 
 clean:
 	rm -f $(TARGET)

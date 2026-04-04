@@ -1,5 +1,6 @@
 .vscode/*
 cpp_/builds/*
+!cpp_/builds/.gitkeep
 py_analytics/.venv
 test.*
 vcpkg/packages/

@@ -15,7 +15,7 @@ std::string SensorDataPoint::getTimestamp() const {
     return timestamp;
 }
 
-// Get current time in a human-readable format with milliseconds
+// Get current time with milliseconds precision
 std::string SensorDataPoint::getCurrentTime() {
     auto now = std::chrono::system_clock::now();
     auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);

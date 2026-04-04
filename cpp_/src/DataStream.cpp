@@ -59,5 +59,3 @@ void DataStream::exportToCsvFile(const std::string& filename) const {
     }
     file.close();
 }
-
-std::vector<SensorDataPoint> dataPoints;
