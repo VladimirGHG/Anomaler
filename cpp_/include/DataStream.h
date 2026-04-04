@@ -7,6 +7,10 @@
 #include <stdexcept>
 #include "DataPoint.h"
 
+/** @brief A class representing a stream of sensor data points.
+ * This class manages a collection of DataPoints, allowing for adding new points,
+ * retrieving points, and exporting the stream to JSON or CSV formats for further processing in other applications/systems.
+*/
 class DataStream {
 public:
     void addDataPoint(const SensorDataPoint& dataPoint);
