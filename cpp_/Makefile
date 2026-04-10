@@ -11,6 +11,7 @@ SRC = src/main.cpp \
       src/DataPoint.cpp \
       src/DataStream.cpp \
       src/DataSender.cpp \
+      src/SourceFactory.cpp \
       src/sources/RandomSource.cpp \
       src/sources/OutlierSource.cpp
 	  
