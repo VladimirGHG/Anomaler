@@ -3,6 +3,8 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <zmq.hpp>
+#include <nlohmann/json.hpp>
 #include "DataPoint.h"
 #include "DataStream.h"
 #include "SourceFactory.h"
@@ -48,7 +50,7 @@ int main(int argc, char** argv) {
 
     // Data Mode: Restrict input to specific "Allowed" strings
     stream_cmd->add_option("-m,--mode", data_mode, "The distribution pattern of the data")
-              ->check(CLI::IsMember({"normal", "noisy", "outlier"}))
+              ->check(CLI::IsMember({"normal", "noisy", "outlier", "drift"}))
               ->default_val("normal");
 
     // The Parsing "Handshake"
@@ -65,11 +67,50 @@ int main(int argc, char** argv) {
             std::cout << "[INFO] Pattern: " << data_mode << " | Freq: " << frequency << "s" << std::endl;
         }
 
+        // Initialize ZeroMQ Context
+        zmq::context_t context(1);
+
+        // Handshake with Manager
+        zmq::socket_t announcer(context, zmq::socket_type::req);
+        announcer.connect("tcp://localhost:5555");
+
+        nlohmann::json registration = {
+            {"action", "start"},
+            {"port", port},      // from your CLI11 option
+            {"type", data_mode}, // from your CLI11 option
+        };
+
+        announcer.send(zmq::buffer(registration.dump()), zmq::send_flags::none);
+
+        // Wait for Python to reply with acknowledgment before starting the stream
+        zmq::message_t reply;
+        auto res = announcer.recv(reply, zmq::recv_flags::none); 
+
+        // If we don't get a reply, it means the manager is not running or there's a connection issue
+        if (!res) {
+            std::cerr << "[ERROR] Failed to receive acknowledgment from manager. Exiting." << std::endl;
+            return 1;
+        }
+
+        // Now start the actual data stream on the dynamic port
+        zmq::socket_t data_sender(context, zmq::socket_type::push);
+        data_sender.connect("tcp://localhost:" + std::to_string(port));
+        
+        // Initialize the data source from the factory
+        auto source = SourceFactory::create(data_mode);
         int points_sent = 0;
 
         while(true){
+            double current_val = source->getNextValue();
+            
+            // Prepare JSON packet for the analytics engine
+            nlohmann::json packet;
+            packet["datapoints"] = {{ {"value", current_val}, {"timestamp", points_sent} }};
+
+            data_sender.send(zmq::buffer(packet.dump()), zmq::send_flags::none);
+
             if (verbose) {
-                std::cout << "[DEBUG] Sent data point: " << "YOUR DATA POINT" << std::endl;
+                std::cout << "[DEBUG] Sent data point: " << current_val << " to port " << port << std::endl;
             }
             if (limit > 0 && points_sent >= limit) {
                 std::cout << "[INFO] Reached limit of " << limit << " points. Stopping stream." << std::endl;
@@ -77,6 +118,8 @@ int main(int argc, char** argv) {
             }
             points_sent++;
             std::this_thread::sleep_for(std::chrono::duration<double>(frequency));
+            printf("\r[INFO] Points Sent: %d", points_sent);
+            fflush(stdout);
         }
         
         std::cout << ">>> Data Stream Started. Press Ctrl+C to stop." << std::endl;
