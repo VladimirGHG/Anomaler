@@ -26,11 +26,12 @@ int main(int argc, char** argv) {
     int port = 5555;
     double frequency = 1.0;
     int limit = 0; // 0 means infinite
-    std::string data_mode = "random";
+    std::string model;
+    std::string data_mode;
 
     // Data Mode: When creating a stream, the user shall specify the data source.
     // Users can create custom sources by implementing the DataSource interface and adding them to the SourceFactory.
-    stream_cmd->add_option("-s,--source", data_mode, "The data source to use for the stream")
+    stream_cmd->add_option("-s,--source", model, "The data source to use for the stream")
               ->check(CLI::IsMember(SourceFactory::GetAvailableModes()))
               ->default_val("random");
 
@@ -50,7 +51,7 @@ int main(int argc, char** argv) {
 
     // Data Mode: Restrict input to specific "Allowed" strings
     stream_cmd->add_option("-m,--mode", data_mode, "The distribution pattern of the data")
-              ->check(CLI::IsMember({"normal", "noisy", "outlier", "drift"}))
+              ->check(CLI::IsMember({"normal", "noisy", "drift"}))
               ->default_val("normal");
 
     // The Parsing "Handshake"
@@ -64,7 +65,7 @@ int main(int argc, char** argv) {
     if (app.got_subcommand(stream_cmd)) {
         if (verbose) {
             std::cout << "[INFO] Initializing Stream on Port: " << port << std::endl;
-            std::cout << "[INFO] Pattern: " << data_mode << " | Freq: " << frequency << "s" << std::endl;
+            std::cout << "[INFO] Pattern: " << model << " | Freq: " << frequency << "s" << std::endl;
         }
 
         // Initialize ZeroMQ Context
@@ -76,8 +77,9 @@ int main(int argc, char** argv) {
 
         nlohmann::json registration = {
             {"action", "start"},
-            {"port", port},      // from your CLI11 option
-            {"type", data_mode}, // from your CLI11 option
+            {"port", port},      // from CLI11 option
+            {"model", model},    // from CLI11 option
+            {"mode", data_mode}  // from CLI11 option
         };
 
         announcer.send(zmq::buffer(registration.dump()), zmq::send_flags::none);
@@ -97,7 +99,7 @@ int main(int argc, char** argv) {
         data_sender.connect("tcp://localhost:" + std::to_string(port));
         
         // Initialize the data source from the factory
-        auto source = SourceFactory::create(data_mode);
+        auto source = SourceFactory::create(model, data_mode);
         int points_sent = 0;
 
         while(true){

@@ -23,7 +23,7 @@ public:
         return {"random", "outlier"}; // Extend this list as new sources are added
     }
 
-    static std::unique_ptr<DataSource> create(const std::string& mode);
+    static std::unique_ptr<DataSource> create(const std::string& mode, const std::string& data_mode);
 };
 
 #endif

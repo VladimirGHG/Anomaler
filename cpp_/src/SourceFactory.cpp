@@ -1,12 +1,19 @@
 #include "SourceFactory.h"
 #include "sources/RandomSource.h"
 #include "sources/OutlierSource.h"
+#include "sources/DriftDecorator.h"
 
-std::unique_ptr<DataSource> SourceFactory::create(const std::string& mode) {
+std::unique_ptr<DataSource> SourceFactory::create(const std::string& mode, const std::string& data_mode) {
+    std::unique_ptr<DataSource> model;
     if (mode == "outlier") {
-        return std::make_unique<OutlierSource>();
+        model = std::make_unique<OutlierSource>();
+    } else if (mode == "random") {
+        model = std::make_unique<RandomSource>();
     }
     // Add more modes here as needed to create different types of data sources, such as "temperature", "pressure", etc.
 
-    return std::make_unique<RandomSource>();
+    if (data_mode == "drift") {
+        model = std::make_unique<DriftDecorator>(std::move(model), 0.01 /* drift magnitude */ );
+    }
+    return model;
 }

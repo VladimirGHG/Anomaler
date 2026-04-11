@@ -10,3 +10,4 @@ vcpkg/installed/
 vcpkg/.vcpkg-root
 vcpkg/vcpkg
 vcpkg/scripts/buildsystems/vcpkg.cmake.log
+.DS_Store
