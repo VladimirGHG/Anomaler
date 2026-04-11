@@ -13,7 +13,8 @@ SRC = src/main.cpp \
       src/DataSender.cpp \
       src/SourceFactory.cpp \
       src/sources/RandomSource.cpp \
-      src/sources/OutlierSource.cpp
+      src/sources/OutlierSource.cpp \
+      src/sources/DriftDecorator.cpp
 	  
 TARGET = builds/main
 

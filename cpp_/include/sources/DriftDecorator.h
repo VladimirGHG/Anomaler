@@ -15,9 +15,9 @@ private:
     double currentDrift = 0.0;
 
 public:
-    DriftDecorator(std::unique_ptr<DataSource> base, double magnitude) {}
+    DriftDecorator(std::unique_ptr<DataSource> base, double magnitude);
 
-    double getNextValue() override {}
+    double getNextValue() override;
 };
 
 #endif

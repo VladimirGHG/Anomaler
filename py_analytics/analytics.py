@@ -1,11 +1,14 @@
+import sys
+import os
+import multiprocessing
+import signal
 import zmq
 import json
 import pandas as pd
+import numpy as np
 from sklearn.ensemble import IsolationForest
-import multiprocessing
-import signal
-import sys
-import time
+from sklearn.utils import shuffle  
+
 
 def run_model_worker(port, model_type="IsolationForest"):
     """
@@ -20,36 +23,57 @@ def run_model_worker(port, model_type="IsolationForest"):
     model = IsolationForest(contamination=0.1, random_state=42)
     data_buffer = []
     buffer_limit = 50 # How many points to collect before training/predicting
+    max_buffer_size = 200 # Keep a rolling window of the most recent points for training
+    train_every_n_points = 20 # Re-train the model every N new points to adapt to changes
+    points_since_last_train = 0
 
     print(f"--- [WORKER] Monitoring Port {port} with {model_type}")
 
     while True:
-        message = receiver.recv_string()
-        packet = json.loads(message)
-        
-        # C++ might send a single point or a small batch
-        # We append new values to our rolling buffer
-        new_values = [p['value'] for p in packet['datapoints']]
-        data_buffer.extend(new_values)
+        if os.getppid() == 1:  # Check if parent process has exited (in case of orphaned workers)
+            print("--- [MANAGER] Parent process has exited. Shutting down manager.")
+            break
 
-        # Keep only the most recent points
-        if len(data_buffer) > 200:
-            data_buffer = data_buffer[-200:]
+        try:
+            if receiver.poll(1000):  # Wait for a message with a timeout to allow graceful shutdown checks
+                message = receiver.recv_string()
+                packet = json.loads(message)
+                
+                # We append new values to our rolling buffer
+                new_values = [p['value'] for p in packet['datapoints']]
+                data_buffer.extend(new_values)
+                points_since_last_train += len(new_values)
 
-        if len(data_buffer) >= buffer_limit:
-            # Prepare data for Scikit-Learn
-            X = [[v] for v in data_buffer]
-            
-            # Re-fit and predict
-            model.fit(X)
-            predictions = model.predict(X)
-            
-            # Check the most recent point (the latest one received)
-            latest_score = predictions[-1]
-            if latest_score == -1:
-                print(f"[!] ANOMALY on Port {port}: Value {new_values[-1]} is an outlier!")
-            else:
-                print(f"[OK] Port {port}: Received {new_values[-1]}")
+                # Keep only the most recent points
+                if len(data_buffer) > max_buffer_size:
+                    data_buffer = data_buffer[-max_buffer_size:]
+
+                if len(data_buffer) >= buffer_limit and hasattr(model, 'estimators_'):
+                    X_latest = [[v] for v in new_values]
+                    predictions = model.predict(X_latest)
+                    
+                    for val, pred in zip(new_values, predictions):
+                        if pred == -1:
+                            print(f"\n[!] ANOMALY Port {port}: Value {val:.2f} is an outlier!")
+                        else:
+                            sys.stdout.write(f"\r[OK] Port {port}: Last value {val:.2f}")
+                            sys.stdout.flush()
+                else:
+                    sys.stdout.write(f"\r[WARMUP] Port {port}: Filling buffer and initializing model ({len(data_buffer)}/{buffer_limit})")
+                    sys.stdout.flush()
+
+                if len(data_buffer) >= buffer_limit and points_since_last_train >= train_every_n_points:
+                    X = np.array([[v] for v in data_buffer])
+                    X = shuffle(X, random_state=42) # Shuffle to avoid any time-based patterns
+                    X = np.asarray(X)
+                    
+                    # Re-fit the model with the updated buffer
+                    model.fit(X)
+                    points_since_last_train = 0
+
+        except Exception as e:
+            print(f"\n[ERROR] Worker on Port {port} encountered an error: {e}")
+            break
 
 active_workers = []
 
