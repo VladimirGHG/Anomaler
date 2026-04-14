@@ -5,8 +5,6 @@
 #include <thread>
 #include <zmq.hpp>
 #include <nlohmann/json.hpp>
-#include "DataPoint.h"
-#include "DataStream.h"
 #include "SourceFactory.h"
 #include "DataSender.h"
 
@@ -24,8 +22,8 @@ int main(int argc, char** argv) {
 
     // Define Scoped Options (Variables only used for streaming)
     int port = 5555;
-    double frequency = 1.0;
-    int limit = 0; // 0 means infinite
+    double frequency = 0.05;
+    int limit = 0;
     std::string model;
     std::string data_mode;
 
@@ -53,6 +51,8 @@ int main(int argc, char** argv) {
     stream_cmd->add_option("-m,--mode", data_mode, "The distribution pattern of the data")
               ->check(CLI::IsMember({"normal", "noisy", "drift"}))
               ->default_val("normal");
+
+    stream_cmd->add_flag("-v,--verbose", verbose, "Enable detailed logging for the stream command");
 
     // The Parsing "Handshake"
     try {
@@ -93,40 +93,38 @@ int main(int argc, char** argv) {
             std::cerr << "[ERROR] Failed to receive acknowledgment from manager. Exiting." << std::endl;
             return 1;
         }
-
         // Now start the actual data stream on the dynamic port
-        zmq::socket_t data_sender(context, zmq::socket_type::push);
-        data_sender.connect("tcp://localhost:" + std::to_string(port));
-        
+        DataSender data_sender("tcp://127.0.0.1:" + std::to_string(port));
+
+        // Set socket options for reliability and performance, so that no memory leaks occur, when the receiver is offline.
+        data_sender.socket.set(zmq::sockopt::sndhwm, 10);
+        data_sender.socket.set(zmq::sockopt::immediate, 0);
+        data_sender.socket.set(zmq::sockopt::linger, 0);
+
         // Initialize the data source from the factory
         auto source = SourceFactory::create(model, data_mode);
-        int points_sent = 0;
-
+        std::cout << "[INFO] Starting data stream..." << std::endl;
         while(true){
-            double current_val = source->getNextValue();
-            
-            // Prepare JSON packet for the analytics engine
-            nlohmann::json packet;
-            packet["datapoints"] = {{ {"value", current_val}, {"timestamp", points_sent} }};
+            DataValue current_val = source->getNextValue(); 
 
-            data_sender.send(zmq::buffer(packet.dump()), zmq::send_flags::none);
+            // Create a stable point and add it to the stream
+            data_sender.stream.addDataPoint(SensorDataPoint(current_val));
 
-            if (verbose) {
-                std::cout << "[DEBUG] Sent data point: " << current_val << " to port " << port << std::endl;
+            // Send if batch is ready
+            if (data_sender.stream.dataPoints.size() >= 50) {
+                res = data_sender.send(50);
+                // data_sender.stream.exportToJsonFile("test.json"); // For debugging purposes, export the batch to a JSON file
+                // data_sender.stream.clear(); // to be implemented: clear the stream after sending to avoid memory issues
+                if (!res) {
+                    std::cout << "[ERROR] Failed to send batch. Waiting..." << std::endl;
+                }
             }
-            if (limit > 0 && points_sent >= limit) {
-                std::cout << "[INFO] Reached limit of " << limit << " points. Stopping stream." << std::endl;
-                break;
-            }
-            points_sent++;
+
             std::this_thread::sleep_for(std::chrono::duration<double>(frequency));
-            printf("\r[INFO] Points Sent: %d", points_sent);
-            fflush(stdout);
         }
         
         std::cout << ">>> Data Stream Started. Press Ctrl+C to stop." << std::endl;
     } else {
-        // If no subcommand is provided, show the help menu by default
         std::cout << app.help() << std::endl;
     }
 

@@ -1,11 +1,12 @@
 #include "DataPoint.h"
+#include "SourceFactory.h"
 #include <chrono>
 #include <ctime>
 #include <sstream>
 #include <iomanip>
 
 SensorDataPoint::SensorDataPoint(DataValue value, std::string timestamp)
-    : value(value), timestamp(timestamp) {}
+    : value(value), timestamp(timestamp){}
 
 DataValue SensorDataPoint::getValue() const {
     return value;

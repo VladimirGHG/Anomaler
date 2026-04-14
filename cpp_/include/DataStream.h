@@ -17,15 +17,12 @@ public:
 
     SensorDataPoint getDataPoint();
 
-    std::string toJson() const;
+    std::string toJson(bool pretty=false, long long limit=-1) const;
 
     void exportToJsonFile(const std::string& filename) const;
 
     void exportToCsvFile(const std::string& filename) const;
-
-private:
     std::vector<SensorDataPoint> dataPoints;
-
 };
 
 #endif
