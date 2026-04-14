@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include "DataTypes.h"
+#include "DataSource.h"
 
 /** @brief A class representing a single data point from a sensor.
  * Each data point consists of a value (which can be of various types as defined in DataTypes.h) and a timestamp.
@@ -17,12 +18,10 @@ public:
     std::string getTimestamp() const;
 
     friend std::ostream& operator<<(std::ostream& os, const SensorDataPoint& p);
-
+    static std::string getCurrentTime();
 private:
     DataValue value;
     std::string timestamp;
-
-    static std::string getCurrentTime();
 };
 
 #endif

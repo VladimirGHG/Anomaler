@@ -15,21 +15,33 @@ SensorDataPoint DataStream::getDataPoint() {
     throw std::runtime_error("No data points available");
 }
 
-// Convert datapoints to JSON format
 using json = nlohmann::json;
 
-std::string DataStream::toJson() const {
-    json j;
-    j["count"] = dataPoints.size();
+std::string DataStream::toJson(bool pretty, long long limit) const {
+    nlohmann::json j;
+    size_t total = dataPoints.size();
     
-    for (const auto& dp : dataPoints) {
-        json point;
+    // Calculate how many we actually send
+    size_t count = (limit > 0 && (size_t)limit < total) ? (size_t)limit : total;
+    j["count"] = count;
+    j["datapoints"] = nlohmann::json::array();
+
+    // Start index: 
+    size_t start_idx = total - count;
+
+    // Standard Forward Loop (Chronological Order)
+    for (size_t i = start_idx; i < total; ++i) {
+        nlohmann::json point;
+        const auto& dp = dataPoints[i];
+        
         std::visit([&](auto&& arg) { point["value"] = arg; }, dp.getValue());
         point["timestamp"] = dp.getTimestamp();
+        
         j["datapoints"].push_back(point);
+        std::cout << point << std::endl;
     }
 
-    return j.dump(4);
+    return pretty ? j.dump(4) : j.dump();
 }
 
 // Export datapoints to JSON file for Python training
@@ -38,7 +50,7 @@ void DataStream::exportToJsonFile(const std::string& filename) const {
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open file: " + filename);
     }
-    file << toJson();
+    file << toJson(true, -1); // Export all data points in pretty format
     file.close();
 }
 
