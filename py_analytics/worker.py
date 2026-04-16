@@ -14,6 +14,8 @@ class ZMQWorker:
         self.context = zmq.Context()
         self.receiver = self.context.socket(zmq.PULL)
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
+        self.tp = 0 # True Positives
+        self.fn = 0 # False Negatives
 
     def start(self):
         while True:
@@ -35,11 +37,12 @@ class ZMQWorker:
                 all_new_values = []
                 for packet in batch_of_packets:
                     all_new_values.extend([p["value"] for p in packet["datapoints"]])
-                
+
                 # Process everything in one go
                 if all_new_values:
                     results = self.strategy.process_batch(all_new_values)
-                    self.report(results)
+                    # self.report(results)
+                    self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
 
     def report(self, results):
         if not results:
@@ -48,12 +51,28 @@ class ZMQWorker:
         anomalies = [r for r in results if r.get("is_anomaly")]
         last_val = results[-1].get("val")
         status = results[-1].get("status")
-
+        levels = results[-1].get("anomaly_level", -1)
+        
         if status == "WARMUP":
             sys.stdout.write(f"\r[WARMUP] Processed {len(results)} points. Latest: {last_val}")
         elif anomalies:
-            print(f"\n[!] ANOMALY DETECTED! Found {len(anomalies)} outliers in batch of {len(results)}.")
+            print(f"\n[!] ANOMALY DETECTED! Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {levels}\\n")
         else:
             sys.stdout.write(f"\r[OK] Batch of {len(results)} points synced. Latest: {last_val}")
         
         sys.stdout.flush()
+
+    def calculate_precision(self, results, data_points, status):
+        """Calculates precision based on the results and any available ground truth."""
+        if status == "WARMUP":
+            return
+        for r, dp in zip(results, data_points[0].get("datapoints")):
+            print(r, dp)
+            if r.get("is_anomaly") and dp.get("shouldbeAnomaly"):
+                print(f"True Positive: Detected {r['val']} as anomaly, which is correct.")
+                self.tp += 1
+            elif not r.get("is_anomaly") and dp.get("shouldbeAnomaly"):
+                print(f"False Negative: Missed {r['val']} which is an anomaly.")
+                self.fn += 1
+        precision = self.tp / (self.tp + self.fn) if (self.tp + self.fn) > 0 else 0
+        print(f"Precision: {precision:.2f} (TP: {self.tp}, `FN: {self.fn})")

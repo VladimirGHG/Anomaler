@@ -17,6 +17,8 @@ public:
 
     SensorDataPoint getDataPoint();
 
+    void clear();
+
     std::string toJson(bool pretty=false, long long limit=-1) const;
 
     void exportToJsonFile(const std::string& filename) const;

@@ -16,22 +16,52 @@ class AnomalyModel(ABC):
 
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
-    def __init__(self):
+    def __init__(self, window_size=250):
         from river import anomaly
 
-        self.model = anomaly.HalfSpaceTrees()
+        self.window_size = window_size
+        self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (0, 100)})
+        self.count = 0 # Counts how many data points have been processed, used for warmup phase control
 
     def process_batch(self, new_values) -> list[dict]:
+
         results = []
         for v in new_values:
-            score = self.model.score_one({"v": v})
-            self.model.learn_one({"v": v})
-            results.append({
-                "val": v, 
-                "is_anomaly": score > 0.7, 
-                "status": "READY"
-            })
+                # Still in Warmup
+                feature_dict = {"v": v}
+                if self.count < self.window_size:
+                    self.model.learn_one(feature_dict)
+                    results.append(
+                        {"val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
+                    self.count += 1
+                else:
+                    score = self.model.score_one(feature_dict)
+                    self.model.learn_one(feature_dict)
+                    results.append({
+                        "val": v,
+                        "is_anomaly": score > 0.7,
+                        "anomaly_level": self.anomaly_level(score),
+                        "status": "READY"
+                    })
         return results
+    
+    def anomaly_level(self, score: float) -> int:
+        """Converts a raw anomaly score into a discrete level (0-5) for easier interpretation."""
+        if self.count < self.window_size:
+            return -1  # Still warming up, treat everything as normal
+        
+        if score < 0.3:
+            return 0  # Normal
+        elif score < 0.5:
+            return 1  # Low Anomaly
+        elif score < 0.7:
+            return 2  # Moderate Anomaly
+        elif score < 0.9:
+            return 3  # High Anomaly
+        elif score < 0.95:
+            return 4  # Severe Anomaly
+        else:
+            return 5  # Extreme Anomaly
 
 class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""

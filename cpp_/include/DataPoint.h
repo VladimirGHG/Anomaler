@@ -13,15 +13,19 @@
 class SensorDataPoint {
 public:
     SensorDataPoint(DataValue value, std::string timestamp = getCurrentTime());
-
+    SensorDataPoint(DataValue value, bool isAnomaly, std::string timestamp = getCurrentTime());
     DataValue getValue() const;
     std::string getTimestamp() const;
+    bool getIsAnomaly() const;
 
     friend std::ostream& operator<<(std::ostream& os, const SensorDataPoint& p);
     static std::string getCurrentTime();
+
 private:
     DataValue value;
+    bool isAnomaly; // Flag indicating if a data point is an anomaly, can be used for future extensions
     std::string timestamp;
+
 };
 
 #endif
