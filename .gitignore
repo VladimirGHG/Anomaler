@@ -2,6 +2,8 @@
 cpp_/builds/*
 !cpp_/builds/.gitkeep
 py_analytics/.venv
+py_analytics/models/*
+!py_analytics/models/.gitkeep
 test.*
 vcpkg/packages/
 vcpkg/buildtrees/

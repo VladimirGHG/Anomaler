@@ -1,17 +1,35 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 import numpy as np
+import joblib
+import time
 from sklearn.ensemble import IsolationForest
 from sklearn.utils import shuffle
 
 
 class AnomalyModel(ABC):
     model: Any
+    last_report_time: Optional[float]
+
+    def __init__(self):
+        self.last_save_time = None
+        self.model_snapshot = 0
 
     @abstractmethod
     def process_batch(self, new_values) -> list[dict]:
         """Processes a batch of values. Handles its own printing."""
         pass
+
+    def save_model(self, path):
+        """Saves the model to disk."""
+        joblib.dump(self.model, path)
+        self.last_save_time = time.time()
+        print(f"[DISK] Model saved to {path}")
+
+    @staticmethod
+    def load_model(path):
+        """Loads the model from disk."""
+        return joblib.load(path)
 
 
 class RiverStrategy(AnomalyModel):
@@ -21,6 +39,8 @@ class RiverStrategy(AnomalyModel):
 
         self.window_size = window_size
         self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (0, 100)})
+        self.model_snapshot = 0
+        self.last_save_time = None
         self.count = 0 # Counts how many data points have been processed, used for warmup phase control
 
     def process_batch(self, new_values) -> list[dict]:
@@ -66,7 +86,10 @@ class RiverStrategy(AnomalyModel):
 class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
     def __init__(self, contamination=0.1):
+
         self.model = IsolationForest(contamination=contamination, random_state=42)
+        self.last_save_time = None
+        self.model_snapshot = 0
         self.data_buffer = []
         self.buffer_limit = 50
         self.max_buffer_size = 200
