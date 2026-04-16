@@ -8,12 +8,19 @@
 SensorDataPoint::SensorDataPoint(DataValue value, std::string timestamp)
     : value(value), timestamp(timestamp){}
 
+SensorDataPoint::SensorDataPoint(DataValue value, bool isAnomaly, std::string timestamp)
+    : value(value), isAnomaly(isAnomaly), timestamp(timestamp) {}
+
 DataValue SensorDataPoint::getValue() const {
     return value;
 }
 
 std::string SensorDataPoint::getTimestamp() const {
     return timestamp;
+}
+
+bool SensorDataPoint::getIsAnomaly() const {
+    return isAnomaly;
 }
 
 // Get current time with milliseconds precision

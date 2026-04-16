@@ -28,7 +28,7 @@ def shutdown_handler(sig, frame):
 
 signal.signal(signal.SIGINT, shutdown_handler)
 
-def start_manager(port=5555, default_model="IsolationForest"):
+def start_manager(port=5555, default_model="River"):
     context = zmq.Context()
     discovery = context.socket(zmq.REP)
     discovery.bind(f"tcp://127.0.0.1:{port}")
@@ -41,7 +41,7 @@ def start_manager(port=5555, default_model="IsolationForest"):
         # Support both JSON object and raw port
         if isinstance(msg, dict):
             stream_port = msg.get('port')
-            model_type = msg.get('model_type', default_model)
+            model_type = "River"
         else:
             stream_port = msg
             model_type = default_model

@@ -11,9 +11,12 @@ class RandomSource : public DataSource {
 private:
     std::mt19937 gen;
     std::normal_distribution<double> dist;
+protected:
+    bool lastWasAnomaly = false;
 public:
     RandomSource();
     double getNextValue() override;
+    bool wasAnomaly() const override { return lastWasAnomaly; };
 };
 
 #endif

@@ -11,6 +11,7 @@ class DataSource {
 public:
     virtual ~DataSource() = default;
     virtual double getNextValue() = 0;
+    virtual bool wasAnomaly() const { return false; } // Default implementation, can be overridden by sources that support anomaly detection
 };
 
 #endif

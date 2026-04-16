@@ -15,6 +15,10 @@ SensorDataPoint DataStream::getDataPoint() {
     throw std::runtime_error("No data points available");
 }
 
+void DataStream::clear() {
+    dataPoints.clear();
+}
+
 using json = nlohmann::json;
 
 std::string DataStream::toJson(bool pretty, long long limit) const {
@@ -36,6 +40,7 @@ std::string DataStream::toJson(bool pretty, long long limit) const {
         
         std::visit([&](auto&& arg) { point["value"] = arg; }, dp.getValue());
         point["timestamp"] = dp.getTimestamp();
+        point["shouldbeAnomaly"] = dp.getIsAnomaly();
         
         j["datapoints"].push_back(point);
         std::cout << point << std::endl;

@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
     int port = 5555;
     double frequency = 0.05;
     int limit = 0;
+    int batch_size = 50;
     std::string model;
     std::string data_mode;
 
@@ -38,9 +39,9 @@ int main(int argc, char** argv) {
               ->check(CLI::PositiveNumber)
               ->capture_default_str();
 
-    // Frequency: Must be within realistic hardware bounds (0.1s to 60s)
+    // Frequency: Must be within realistic hardware bounds (0.05s to 60s)
     stream_cmd->add_option("-f,--freq", frequency, "Polling frequency in seconds")
-              ->check(CLI::Range(0.1, 60.0))
+              ->check(CLI::Range(0.05, 60.0))
               ->capture_default_str();
 
     // Limit: Allow the user to run controlled experiments
@@ -51,6 +52,11 @@ int main(int argc, char** argv) {
     stream_cmd->add_option("-m,--mode", data_mode, "The distribution pattern of the data")
               ->check(CLI::IsMember({"normal", "noisy", "drift"}))
               ->default_val("normal");
+
+    // Batch Size: Allow the user to specify how many points to send in each batch, with a default of 50 and a maximum of 1000 to prevent memory issues
+    stream_cmd->add_option("-b,--batch", batch_size, "Number of points to send in each batch (0 for all available)")
+              ->check(CLI::NonNegativeNumber)
+              ->capture_default_str();
 
     stream_cmd->add_flag("-v,--verbose", verbose, "Enable detailed logging for the stream command");
 
@@ -106,18 +112,19 @@ int main(int argc, char** argv) {
         std::cout << "[INFO] Starting data stream..." << std::endl;
         while(true){
             DataValue current_val = source->getNextValue(); 
-
+            bool isAnomaly = source->wasAnomaly();
             // Create a stable point and add it to the stream
-            data_sender.stream.addDataPoint(SensorDataPoint(current_val));
+            data_sender.stream.addDataPoint(SensorDataPoint(current_val, isAnomaly));
 
             // Send if batch is ready
-            if (data_sender.stream.dataPoints.size() >= 50) {
-                res = data_sender.send(50);
+            if (data_sender.stream.dataPoints.size() >= batch_size) {
+                res = data_sender.send(batch_size);
                 // data_sender.stream.exportToJsonFile("test.json"); // For debugging purposes, export the batch to a JSON file
                 // data_sender.stream.clear(); // to be implemented: clear the stream after sending to avoid memory issues
                 if (!res) {
                     std::cout << "[ERROR] Failed to send batch. Waiting..." << std::endl;
                 }
+                data_sender.stream.clear(); // Clear the stream after sending to avoid memory issues
             }
 
             std::this_thread::sleep_for(std::chrono::duration<double>(frequency));
