@@ -17,7 +17,7 @@ public:
     zmq::socket_t socket;
     explicit DataSender(const std::string& endpoint, DataStream& stream);
     explicit DataSender(const std::string& endpoint = "tcp://127.0.0.1:5555");
-    int send(int batch_size=1);
+    int send(int batch_size=1, bool clear_after_send=true);
 };
 
 #endif

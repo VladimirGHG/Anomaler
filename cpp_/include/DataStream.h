@@ -6,6 +6,7 @@
 #include <fstream>
 #include <stdexcept>
 #include "DataPoint.h"
+#include <deque>
 
 /** @brief A class representing a stream of sensor data points.
  * This class manages a collection of DataPoints, allowing for adding new points,
@@ -17,14 +18,14 @@ public:
 
     SensorDataPoint getDataPoint();
 
-    void clear();
+    void clear(int toRemove = -1);
 
     std::string toJson(bool pretty=false, long long limit=-1) const;
 
     void exportToJsonFile(const std::string& filename) const;
 
     void exportToCsvFile(const std::string& filename) const;
-    std::vector<SensorDataPoint> dataPoints;
+    std::deque<SensorDataPoint> dataPoints;
 };
 
 #endif

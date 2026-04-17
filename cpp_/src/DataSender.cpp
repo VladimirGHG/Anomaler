@@ -11,7 +11,7 @@ DataSender::DataSender(const std::string& endpoint)
     : context(1), stream(DataStream()), socket(context, zmq::socket_type::push) {
     socket.bind(endpoint);
 }
-int DataSender::send(int batch_size) {
+int DataSender::send(int batch_size, bool clear_after_send) {
     if (batch_size <= 0) {
         batch_size = 1; // Ensure batch size is at least 1
     }
@@ -25,6 +25,9 @@ int DataSender::send(int batch_size) {
     auto result = socket.send(message, zmq::send_flags::none);
     if (result) {
         std::cout << "[ZMQ] Sent " << payload.size() << " bytes." << std::endl;
+        if (clear_after_send) {
+            stream.clear(batch_size);
+        }
         return 1;
     }
     return 0;

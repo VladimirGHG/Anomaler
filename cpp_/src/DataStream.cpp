@@ -15,8 +15,11 @@ SensorDataPoint DataStream::getDataPoint() {
     throw std::runtime_error("No data points available");
 }
 
-void DataStream::clear() {
-    dataPoints.clear();
+void DataStream::clear(int toRemove) {
+    int actualRemove = std::min(toRemove, static_cast<int>(dataPoints.size()));
+    for (int i = 0; i < actualRemove; ++i) {
+        dataPoints.pop_front();
+    }
 }
 
 using json = nlohmann::json;
