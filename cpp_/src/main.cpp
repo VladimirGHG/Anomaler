@@ -118,9 +118,8 @@ int main(int argc, char** argv) {
 
             // Send if batch is ready
             if (data_sender.stream.dataPoints.size() >= batch_size) {
-                res = data_sender.send(batch_size);
+                res = data_sender.send(batch_size, true); // Send the batch and clear after sending
                 // data_sender.stream.exportToJsonFile("test.json"); // For debugging purposes, export the batch to a JSON file
-                // data_sender.stream.clear(); // to be implemented: clear the stream after sending to avoid memory issues
                 if (!res) {
                     std::cout << "[ERROR] Failed to send batch. Waiting..." << std::endl;
                 }
