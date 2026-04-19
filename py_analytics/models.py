@@ -1,11 +1,16 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 import numpy as np
+from river import drift, anomaly
+from enum import Enum
 import joblib
 import time
 from sklearn.ensemble import IsolationForest
 from sklearn.utils import shuffle
 
+class RiverDriftPolicy(Enum):
+    RESET = "reset"  # Reset the model to scratch
+    ADAPT = "adapt"  # Let the model adapt naturally to new data
 
 class AnomalyModel(ABC):
     model: Any
@@ -34,21 +39,34 @@ class AnomalyModel(ABC):
 
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
-    def __init__(self, window_size=250):
-        from river import anomaly
+    def __init__(self, window_size=250, drift_policy=RiverDriftPolicy.RESET):
 
         self.window_size = window_size
-        self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (0, 100)})
+        self.drift_policy = drift_policy
+        self.model = self._init_model()
         self.model_snapshot = 0
         self.last_save_time = None
         self.count = 0 # Counts how many data points have been processed, used for warmup phase control
+
+        self.drift_detector = drift.ADWIN()
+
+    def _init_model(self):
+        self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (-100, 100)})
 
     def process_batch(self, new_values) -> list[dict]:
 
         results = []
         for v in new_values:
-                # Still in Warmup
                 feature_dict = {"v": v}
+                self.drift_detector.update(v)
+
+                if self.drift_detector.drift_detected:
+                    if self.drift_policy == RiverDriftPolicy.RESET:
+                        print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+                        self.model = self._init_model()
+                        self.count = 0 # Reset warmup count as well
+                    
+                # Still in Warmup
                 if self.count < self.window_size:
                     self.model.learn_one(feature_dict)
                     results.append(
@@ -93,43 +111,50 @@ class IsolationForestStrategy(AnomalyModel):
         self.data_buffer = []
         self.buffer_limit = 50
         self.max_buffer_size = 200
-        self.train_every_n_points = 1000
-        self.points_since_last_train = 0
+
+        self.drift_detector = drift.ADWIN()
         self.is_fitted = False
+        self.retrain_needed = False
 
     def process_batch(self, new_values) -> list[dict]:
         self.data_buffer.extend(new_values)
-        self.points_since_last_train += len(new_values)
 
         if len(self.data_buffer) > self.max_buffer_size:
             self.data_buffer = self.data_buffer[-self.max_buffer_size:]
 
-        # If we have enough data and it's time to train (or first time training)
-        if len(self.data_buffer) >= self.buffer_limit:
-            if (
-                not self.is_fitted
-                or self.points_since_last_train >= self.train_every_n_points
-            ):
-                print(f"\n[TRAINING] Fitting IsolationForest with {len(self.data_buffer)} data points...")
-                X = np.array(self.data_buffer).reshape(-1, 1)
-                self.model.fit(shuffle(X, random_state=42))
-                self.is_fitted = True
-                self.points_since_last_train = 0
+        for v in new_values:
+            self.drift_detector.update(v)
+            if self.drift_detector.drift_detected:
+                print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+                self.retrain_needed = True
+        
+        # Determine if we should train the model: either we're still in warmup and have enough data, or we've detected drift and need to retrain
+        should_train = (not self.is_fitted and len(self.data_buffer) >= self.buffer_limit) or self.retrain_needed
 
+        if should_train:
+            self._train_model()
+            self.retrain_needed = False
+
+        return self._generate_results(new_values)
+    
+    def _train_model(self):
+        print(f"\n[TRAINING] Fitting IsolationForest with {len(self.data_buffer)} data points...")
+        X = np.array(self.data_buffer).reshape(-1, 1)
+        self.model.fit(shuffle(X, random_state=42))
+        self.is_fitted = True
+
+    def _generate_results(self, new_values) -> list[dict]:
+        """Generates results for the current batch of new values based on the model's predictions."""
         results = []
         if not self.is_fitted:
             # Still in Warmup
             for v in new_values:
                 print(f"\n[DEBUG] Processing value: {v} (WARMUP)")
-                results.append(
-                    {"val": v, "is_anomaly": False, "status": "WARMUP"})
+                results.append({"val": v, "is_anomaly": False, "status": "WARMUP"})
         else:
             # Model is ready, predict the batch
-            predictions = self.model.predict(
-                np.array(new_values).reshape(-1, 1))
+            predictions = self.model.predict(np.array(new_values).reshape(-1, 1))
             for v, pred in zip(new_values, predictions):
-                results.append(
-                    {"val": v, "is_anomaly": (pred == -1), "status": "READY"}
-                )
+                results.append({"val": v, "is_anomaly": (pred == -1), "status": "READY"})
 
         return results
