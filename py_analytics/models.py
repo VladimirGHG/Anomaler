@@ -9,8 +9,12 @@ from sklearn.ensemble import IsolationForest
 from sklearn.utils import shuffle
 
 class RiverDriftPolicy(Enum):
-    RESET = "reset"  # Reset the model to scratch
-    ADAPT = "adapt"  # Let the model adapt naturally to new data
+    RESET = "reset" # Reset the model to scratch
+    ADAPT = "adapt" # Let the model adapt naturally to new data
+
+class BatchBufferPolicy(Enum):
+    CLEAR_ON_DRIFT = "clear_on_drift" # Clear the buffer when drift is detected
+    KEEP_WINDOW = "keep_window" # Keep the last N data points as a sliding window, even after drift
 
 class AnomalyModel(ABC):
     model: Any
@@ -19,6 +23,7 @@ class AnomalyModel(ABC):
     def __init__(self):
         self.last_save_time = None
         self.model_snapshot = 0
+        self.drift_detector = None
 
     @abstractmethod
     def process_batch(self, new_values) -> list[dict]:
@@ -40,10 +45,11 @@ class AnomalyModel(ABC):
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
     def __init__(self, window_size=250, drift_policy=RiverDriftPolicy.RESET):
-
+        
+        self.name = "RiverHalfSpaceTrees"
         self.window_size = window_size
         self.drift_policy = drift_policy
-        self.model = self._init_model()
+        self._init_model()
         self.model_snapshot = 0
         self.last_save_time = None
         self.count = 0 # Counts how many data points have been processed, used for warmup phase control
@@ -101,16 +107,21 @@ class RiverStrategy(AnomalyModel):
         else:
             return 5  # Extreme Anomaly
 
+    def __str__(self) -> str:
+        return self.name
+
 class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
-    def __init__(self, contamination=0.1):
-
+    def __init__(self, contamination=0.1, buffer_limit=50, max_buffer_size=200, buffer_policy=BatchBufferPolicy.CLEAR_ON_DRIFT):
+        
+        self.name = "SKlearnIsolatedForest"
         self.model = IsolationForest(contamination=contamination, random_state=42)
         self.last_save_time = None
         self.model_snapshot = 0
         self.data_buffer = []
-        self.buffer_limit = 50
-        self.max_buffer_size = 200
+        self.buffer_limit = buffer_limit # Minimum number of data points to start training, even if we detect drift before reaching this limit. This allows us to have a stable initial model before we start reacting to drift.
+        self.max_buffer_size = max_buffer_size # Maximum number of data points to keep in the buffer for training, even if we clear on drift. This allows us to have a sliding window of recent data for training after a drift event.
+        self.buffer_policy = buffer_policy #
 
         self.drift_detector = drift.ADWIN()
         self.is_fitted = False
@@ -127,7 +138,11 @@ class IsolationForestStrategy(AnomalyModel):
             if self.drift_detector.drift_detected:
                 print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
                 self.retrain_needed = True
-        
+                if self.buffer_policy == BatchBufferPolicy.CLEAR_ON_DRIFT:
+                    self.is_fitted = False # Reset fitted status to trigger warmup phase again
+                    self.data_buffer = [] # Clear buffer immediately on drift detection
+                break
+
         # Determine if we should train the model: either we're still in warmup and have enough data, or we've detected drift and need to retrain
         should_train = (not self.is_fitted and len(self.data_buffer) >= self.buffer_limit) or self.retrain_needed
 
@@ -158,3 +173,6 @@ class IsolationForestStrategy(AnomalyModel):
                 results.append({"val": v, "is_anomaly": (pred == -1), "status": "READY"})
 
         return results
+    
+    def __str__(self):
+        return self.name

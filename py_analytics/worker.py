@@ -45,7 +45,7 @@ class ZMQWorker:
                 results = []
                 if all_new_values:
                     results = self.strategy.process_batch(all_new_values)
-                    # self.report(results)
+                    self.report(results)
 
                 if self.strategy.last_save_time is None:
                     self.strategy.last_save_time = time.time()
@@ -55,7 +55,7 @@ class ZMQWorker:
                         print("[DISK] Reached max snapshots. Overwriting from model_0.pkl")
 
                     os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
-                    self.strategy.save_model(os.path.join(MODELS_DIR, f"model_{self.strategy.model_snapshot}.pkl"))
+                    self.strategy.save_model(os.path.join(MODELS_DIR, f"{self.strategy.__str__()}_{self.strategy.model_snapshot}.pkl"))
                     self.strategy.last_save_time = time.time()
                     self.strategy.model_snapshot += 1
 
@@ -97,3 +97,6 @@ class ZMQWorker:
 
     def save_model(self, path: str):
         self.strategy.save_model(path)
+
+    def load_model(self, path: str):
+        self.strategy.load_model(path)
