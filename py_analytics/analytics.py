@@ -16,9 +16,12 @@ def run_model_worker_process(port, model_type):
     folder = "./py_analytics/models"
     models = get_latest_model(folder)
 
-    if model_type == "River":
+    if model_type == "RiverHalfSpaceTrees":
         strategy = RiverStrategy()
         prefix = "RiverHalfSpaceTrees"
+    elif model_type == "SKlearnIsolatedForest":
+        strategy = IsolationForestStrategy()
+        prefix = "SKlearnIsolatedForest"
     else:
         strategy = IsolationForestStrategy()
         prefix = "SKlearnIsolatedForest"
@@ -47,12 +50,12 @@ def shutdown_handler(sig, frame):
 
 signal.signal(signal.SIGINT, shutdown_handler)
 
-def start_manager(port=5555, default_model="River"):
+def start_manager(port=5555):
     context = zmq.Context()
     discovery = context.socket(zmq.REP)
     discovery.bind(f"tcp://127.0.0.1:{port}")
 
-    print(f"--- [MANAGER] Awaiting C++ registrations (Mode: {default_model})...")
+    print(f"--- [MANAGER] Awaiting C++ registrations ...")
 
     while True:
         msg = discovery.recv_json()
@@ -60,10 +63,10 @@ def start_manager(port=5555, default_model="River"):
         # Support both JSON object and raw port
         if isinstance(msg, dict):
             stream_port = msg.get('port')
-            model_type = "River"
+            model_type = msg.get('ml_model')
         else:
             stream_port = msg
-            model_type = default_model
+            model_type = "RiverHalfSpaceTrees"
     
         p = multiprocessing.Process(
             target=run_model_worker_process, 

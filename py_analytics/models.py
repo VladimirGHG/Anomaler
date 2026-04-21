@@ -21,15 +21,19 @@ class AnomalyModel(ABC):
     last_report_time: Optional[float]
 
     def __init__(self):
+        self.name = None
+        self.data_buffer = []
         self.last_save_time = None
         self.model_snapshot = 0
         self.drift_detector = None
+        self.median = 0
+        self.mad = 0
 
     @abstractmethod
-    def process_batch(self, new_values) -> list[dict]:
+    def process_batch(self, mad, median, new_values: list[int]) -> list[dict]:
         """Processes a batch of values. Handles its own printing."""
         pass
-
+    
     def save_model(self, path):
         """Saves the model to disk."""
         joblib.dump(self.model, path)
@@ -40,7 +44,6 @@ class AnomalyModel(ABC):
     def load_model(path):
         """Loads the model from disk."""
         return joblib.load(path)
-
 
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
@@ -59,7 +62,7 @@ class RiverStrategy(AnomalyModel):
     def _init_model(self):
         self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (-100, 100)})
 
-    def process_batch(self, new_values) -> list[dict]:
+    def process_batch(self, mad, median, new_values) -> list[dict]:
 
         results = []
         for v in new_values:
@@ -76,7 +79,7 @@ class RiverStrategy(AnomalyModel):
                 if self.count < self.window_size:
                     self.model.learn_one(feature_dict)
                     results.append(
-                        {"val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
+                        {"val": v, "is_anomaly": False, "score": -1, "status": "WARMUP"})
                     self.count += 1
                 else:
                     score = self.model.score_one(feature_dict)
@@ -84,41 +87,23 @@ class RiverStrategy(AnomalyModel):
                     results.append({
                         "val": v,
                         "is_anomaly": score > 0.7,
-                        "anomaly_level": self.anomaly_level(score),
+                        "score": score,
                         "status": "READY"
                     })
         return results
-    
-    def anomaly_level(self, score: float) -> int:
-        """Converts a raw anomaly score into a discrete level (0-5) for easier interpretation."""
-        if self.count < self.window_size:
-            return -1  # Still warming up, treat everything as normal
-        
-        if score < 0.3:
-            return 0  # Normal
-        elif score < 0.5:
-            return 1  # Low Anomaly
-        elif score < 0.7:
-            return 2  # Moderate Anomaly
-        elif score < 0.9:
-            return 3  # High Anomaly
-        elif score < 0.95:
-            return 4  # Severe Anomaly
-        else:
-            return 5  # Extreme Anomaly
 
     def __str__(self) -> str:
         return self.name
 
 class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
-    def __init__(self, contamination=0.1, buffer_limit=50, max_buffer_size=200, buffer_policy=BatchBufferPolicy.CLEAR_ON_DRIFT):
-        
+    def __init__(self, contamination=0.01, buffer_limit=50, max_buffer_size=200, buffer_policy=BatchBufferPolicy.CLEAR_ON_DRIFT):
+
         self.name = "SKlearnIsolatedForest"
         self.model = IsolationForest(contamination=contamination, random_state=42)
+        self.data_buffer = []
         self.last_save_time = None
         self.model_snapshot = 0
-        self.data_buffer = []
         self.buffer_limit = buffer_limit # Minimum number of data points to start training, even if we detect drift before reaching this limit. This allows us to have a stable initial model before we start reacting to drift.
         self.max_buffer_size = max_buffer_size # Maximum number of data points to keep in the buffer for training, even if we clear on drift. This allows us to have a sliding window of recent data for training after a drift event.
         self.buffer_policy = buffer_policy #
@@ -127,7 +112,7 @@ class IsolationForestStrategy(AnomalyModel):
         self.is_fitted = False
         self.retrain_needed = False
 
-    def process_batch(self, new_values) -> list[dict]:
+    def process_batch(self, mad, median, new_values) -> list[dict]:
         self.data_buffer.extend(new_values)
 
         if len(self.data_buffer) > self.max_buffer_size:
@@ -150,7 +135,7 @@ class IsolationForestStrategy(AnomalyModel):
             self._train_model()
             self.retrain_needed = False
 
-        return self._generate_results(new_values)
+        return self._generate_results(mad, median, new_values)
     
     def _train_model(self):
         print(f"\n[TRAINING] Fitting IsolationForest with {len(self.data_buffer)} data points...")
@@ -158,21 +143,30 @@ class IsolationForestStrategy(AnomalyModel):
         self.model.fit(shuffle(X, random_state=42))
         self.is_fitted = True
 
-    def _generate_results(self, new_values) -> list[dict]:
+    def _generate_results(self, mad, median, new_values) -> list[dict]:
         """Generates results for the current batch of new values based on the model's predictions."""
         results = []
         if not self.is_fitted:
             # Still in Warmup
             for v in new_values:
                 print(f"\n[DEBUG] Processing value: {v} (WARMUP)")
-                results.append({"val": v, "is_anomaly": False, "status": "WARMUP"})
+                results.append({"val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
         else:
             # Model is ready, predict the batch
             predictions = self.model.predict(np.array(new_values).reshape(-1, 1))
             for v, pred in zip(new_values, predictions):
-                results.append({"val": v, "is_anomaly": (pred == -1), "status": "READY"})
+                results.append({"val": v, "is_anomaly": (pred == -1), "anomaly_level": self.anomaly_level(mad, median, v),"status": "READY"})
 
         return results
     
+    def anomaly_level(self, mad: int, median: int, check_value: int):
+        """Dynamically identify anomaly levels for any distribution"""
+        diff = np.abs(check_value - median)
+
+        if diff > 4 * mad: return 3
+        elif diff > 3 * mad: return 2
+        elif diff > 2 * mad: return 1
+        return 0
+
     def __str__(self):
         return self.name
