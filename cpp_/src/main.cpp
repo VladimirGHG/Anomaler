@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
     int batch_size = 50;
     std::string model;
     std::string data_mode;
+    std::string ml_model;
 
     // Data Mode: When creating a stream, the user shall specify the data source.
     // Users can create custom sources by implementing the DataSource interface and adding them to the SourceFactory.
@@ -53,6 +54,10 @@ int main(int argc, char** argv) {
               ->check(CLI::IsMember({"normal", "noisy", "drift"}))
               ->default_val("normal");
 
+    stream_cmd->add_option("--ml,--ml_model", ml_model, "The anomaly detection model")
+              ->check(CLI::IsMember({"RiverHalfSpaceTrees", "SKlearnIsolatedForest"}))
+              ->default_val("SKlearnIsolatedForest");
+              
     // Batch Size: Allow the user to specify how many points to send in each batch, with a default of 50 and a maximum of 1000 to prevent memory issues
     stream_cmd->add_option("-b,--batch", batch_size, "Number of points to send in each batch (0 for all available)")
               ->check(CLI::NonNegativeNumber)
@@ -85,7 +90,8 @@ int main(int argc, char** argv) {
             {"action", "start"},
             {"port", port},      // from CLI11 option
             {"model", model},    // from CLI11 option
-            {"mode", data_mode}  // from CLI11 option
+            {"mode", data_mode},  // from CLI11 option
+            {"ml_model", ml_model}  // from CLI11 option
         };
 
         announcer.send(zmq::buffer(registration.dump()), zmq::send_flags::none);

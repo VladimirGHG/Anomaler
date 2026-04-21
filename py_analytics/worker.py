@@ -2,6 +2,7 @@ import os
 import zmq
 from .models import AnomalyModel
 from sklearn.utils import shuffle
+import numpy as np
 import sys
 import time
 import json
@@ -17,9 +18,16 @@ class ZMQWorker:
         self.context = zmq.Context()
         self.receiver = self.context.socket(zmq.PULL)
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
+        self.median = 0
+        self.mad = 1 # MAD / Median Absolute Deviation
         self.tp = 0 # True Positives
         self.fn = 0 # False Negatives
 
+    def get_median_mad(self, data_points: list[int]):
+        arr = np.asanyarray(data_points) # Convert to numpy array for faster calculations and less memory usasge
+        self.median = np.median(arr)
+        self.mad = np.median(np.abs(arr - self.median)) * 1.4826 # A scaling factor to make MAD comparable to STD for normal data distributions
+    
     def start(self):
         while True:
             if os.getppid() == 1: break
@@ -41,18 +49,23 @@ class ZMQWorker:
                 for packet in batch_of_packets:
                     all_new_values.extend([p["value"] for p in packet["datapoints"]])
 
+                if self.strategy.name == "SKlearnIsolatedForest":
+                    if all_new_values:
+                        # Calculate the current median and MAD
+                        self.get_median_mad(self.strategy.data_buffer)
+                
                 # Process everything in one go
                 results = []
                 if all_new_values:
-                    results = self.strategy.process_batch(all_new_values)
+                    results = self.strategy.process_batch(self.mad, self.median, all_new_values)
                     self.report(results)
 
                 if self.strategy.last_save_time is None:
                     self.strategy.last_save_time = time.time()
-                elif time.time() - self.strategy.last_save_time > 20: # Save every 5 minutes (will not be hardcoded in future)
+                elif time.time() - self.strategy.last_save_time > 20: # Save every 20 seconds (will not be hardcoded in future)
                     if self.strategy.model_snapshot >= 5: # Keep only last 5 snapshots (will not be hardcoded in future)
                         self.strategy.model_snapshot = 0
-                        print("[DISK] Reached max snapshots. Overwriting from model_0.pkl")
+                        print(f"[DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
 
                     os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
                     self.strategy.save_model(os.path.join(MODELS_DIR, f"{self.strategy.__str__()}_{self.strategy.model_snapshot}.pkl"))
@@ -69,12 +82,14 @@ class ZMQWorker:
         anomalies = [r for r in results if r.get("is_anomaly")]
         last_val = results[-1].get("val")
         status = results[-1].get("status")
-        levels = results[-1].get("anomaly_level", -1)
+        if self.strategy.name == "SKlearnIsolatedForest": level = results[-1].get("anomaly_level", -1)
+        elif self.strategy.name == "RiverHalfSpaceTrees": level = results[-1].get("score", -1)
+        else: level = -1
         
         if status == "WARMUP":
             sys.stdout.write(f"\r[WARMUP] Processed {len(results)} points. Latest: {last_val}")
         elif anomalies:
-            print(f"\n[!] ANOMALY DETECTED! Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {levels}\\n")
+            print(f"\n[!] ANOMALY DETECTED! Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {level}\\n")
         else:
             sys.stdout.write(f"\r[OK] Batch of {len(results)} points synced. Latest: {last_val}")
         
