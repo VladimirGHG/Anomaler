@@ -2,6 +2,6 @@
 
 OutlierSource::OutlierSource() = default;
 
-double OutlierSource::getNextValue() {
-    return 100.0 + (rand() % 10);
+SensorDataPoint OutlierSource::getNextValue() {
+    return SensorDataPoint(100.0 + (rand() % 10));
 }

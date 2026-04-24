@@ -15,7 +15,7 @@ protected:
     bool lastWasAnomaly = false;
 public:
     RandomSource();
-    double getNextValue() override;
+    SensorDataPoint getNextValue() override;
     bool wasAnomaly() const override { return lastWasAnomaly; };
 };
 

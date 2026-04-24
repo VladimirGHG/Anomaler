@@ -4,7 +4,6 @@
 #include <string>
 #include <iostream>
 #include "DataTypes.h"
-#include "DataSource.h"
 
 /** @brief A class representing a single data point from a sensor.
  * Each data point consists of a value (which can be of various types as defined in DataTypes.h) and a timestamp.
