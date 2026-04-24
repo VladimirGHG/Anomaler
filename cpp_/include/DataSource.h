@@ -1,5 +1,6 @@
 #ifndef DATASOURCE_H
 #define DATASOURCE_H
+class SensorDataPoint;
 
 /**
  * @class DataSource
@@ -10,7 +11,7 @@
 class DataSource {
 public:
     virtual ~DataSource() = default;
-    virtual double getNextValue() = 0;
+    virtual SensorDataPoint getNextValue() = 0;
     virtual bool wasAnomaly() const { return false; } // Default implementation, can be overridden by sources that support anomaly detection
 };
 

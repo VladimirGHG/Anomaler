@@ -2,6 +2,7 @@
 #define OUTLIERSOURCE_H
 
 #include "DataSource.h"
+#include "DataPoint.h"
 #include <random>
 
 /** @brief A concrete implementation of DataSource that generates outlier values.
@@ -9,7 +10,7 @@
  */
 class OutlierSource : public DataSource {
 public:    OutlierSource();
-    double getNextValue() override;
+    SensorDataPoint getNextValue() override;
 };
 
 #endif

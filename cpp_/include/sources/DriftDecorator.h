@@ -2,6 +2,7 @@
 #define SOURCES_DRIFTSOURCE_H
 
 #include "DataSource.h"
+#include "DataPoint.h"
 #include <random>
 
 /** @brief A concrete implementation of DataSource that simulates sensor drift over time.
@@ -17,7 +18,7 @@ private:
 public:
     DriftDecorator(std::unique_ptr<DataSource> base, double magnitude);
 
-    double getNextValue() override;
+    SensorDataPoint getNextValue() override;
 };
 
 #endif

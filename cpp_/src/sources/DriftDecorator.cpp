@@ -3,7 +3,9 @@
 DriftDecorator::DriftDecorator(std::unique_ptr<DataSource> base, double magnitude) 
     : baseSource(std::move(base)), driftMagnitude(magnitude) {}
 
-double DriftDecorator::getNextValue() {
+SensorDataPoint DriftDecorator::getNextValue() {
     currentDrift += driftMagnitude;
-    return baseSource->getNextValue() + currentDrift;  // Adds drift to the base value
-}   
+    SensorDataPoint original = baseSource->getNextValue();
+    double originalValue = std::get<double>(original.getValue());
+    return SensorDataPoint(originalValue + currentDrift);
+}

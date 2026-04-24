@@ -117,10 +117,10 @@ int main(int argc, char** argv) {
         auto source = SourceFactory::create(model, data_mode);
         std::cout << "[INFO] Starting data stream..." << std::endl;
         while(true){
-            DataValue current_val = source->getNextValue(); 
-            bool isAnomaly = source->wasAnomaly();
+            SensorDataPoint current_val = source->getNextValue(); 
+            // bool isAnomaly = source->wasAnomaly();
             // Create a stable point and add it to the stream
-            data_sender.stream.addDataPoint(SensorDataPoint(current_val, isAnomaly));
+            data_sender.stream.addDataPoint(current_val);
 
             // Send if batch is ready
             if (data_sender.stream.dataPoints.size() >= batch_size) {
