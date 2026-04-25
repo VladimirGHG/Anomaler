@@ -9,33 +9,30 @@ import joblib
 
 active_workers = []
 
-def run_model_worker_process(port, model_type):
+def run_model_worker_process(
+        port: int, # A port on which the ZMQWroker is going to wait for data points from the Cpp side.
+        Amodel: str = "SKlearnIsolatedForest" # If a basic name is given, initiates a new model. When given a path, loads the model from that path.
+    ):
     """Entry point for the multiprocessing.Process"""
 
     # Check if their is a saved model
     folder = "./py_analytics/models"
     models = get_latest_model(folder)
-
-    if model_type == "RiverHalfSpaceTrees":
+    
+    if Amodel == "RiverHalfSpaceTrees":
         strategy = RiverStrategy()
-        prefix = "RiverHalfSpaceTrees"
-    elif model_type == "SKlearnIsolatedForest":
+    elif Amodel == "SKlearnIsolatedForest":
         strategy = IsolationForestStrategy()
-        prefix = "SKlearnIsolatedForest"
+    elif ".pkl" in Amodel: # If a specific path to a model is given, load the given model.
+        print(Amodel)
+        if Amodel in [str(model) for model in models]:
+            strategy = joblib.load(Amodel)
+            print(f"--- [LOADED] {Amodel}")
+        else:
+            raise NameError("--- [ERROR] Please provide a valid path to load an Amodel model")
     else:
-        strategy = IsolationForestStrategy()
-        prefix = "SKlearnIsolatedForest"
+        raise NameError("--- [ERROR] Please provide a valid Amodel name")
 
-    if models:
-        model_to_load = None
-        for model in models:
-            if prefix in str(model):
-                model_to_load = model
-
-        if model_to_load:
-            strategy.model = joblib.load(model_to_load)
-            print(f"[LOADED] {model_to_load}")
-            
     worker = ZMQWorker(port, strategy)
     worker.start()
 
@@ -84,9 +81,10 @@ def get_latest_model(folder_path: str, extension: str = "*.pkl"):
     files = list(path.glob(extension))
     
     if not files:
-        return None
+        return ""
         
     # latest_file = max(files, key=lambda f: f.stat().st_mtime)
+    print(files)
     return files
 
 if __name__ == "__main__":

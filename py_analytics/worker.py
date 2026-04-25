@@ -12,7 +12,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, port, strategy: AnomalyModel):
+    def __init__(self, port, strategy: AnomalyModel, load_path: str = "", save_every: int = 60, max_snapshots: int = 10):
         self.port = port
         self.strategy = strategy
         self.context = zmq.Context()
@@ -22,6 +22,9 @@ class ZMQWorker:
         self.mad = 1 # MAD / Median Absolute Deviation
         self.tp = 0 # True Positives
         self.fn = 0 # False Negatives
+        self.load_path = load_path
+        self.save_every = save_every
+        self.max_snapshots = max_snapshots
 
     def get_median_mad(self, data_points: list[int]):
         arr = np.asanyarray(data_points) # Convert to numpy array for faster calculations and less memory usasge
@@ -56,16 +59,24 @@ class ZMQWorker:
                 
                 # Process everything in one go
                 results = []
+
+                # If a model loading path was provided when the worker was created, than load the model.
+                if self.load_path:
+                    self.strategy.model = self.strategy.load_model(self.load_path)
+
+                # If there are newly received data points process them and report the results.
                 if all_new_values:
                     results = self.strategy.process_batch(self.mad, self.median, all_new_values)
                     self.report(results)
 
+                # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
+                # Elif last snapshot was made more than SELF.SAVE_EVERY seconds ago, save it.
                 if self.strategy.last_save_time is None:
                     self.strategy.last_save_time = time.time()
-                elif time.time() - self.strategy.last_save_time > 20: # Save every 20 seconds (will not be hardcoded in future)
-                    if self.strategy.model_snapshot >= 5: # Keep only last 5 snapshots (will not be hardcoded in future)
+                elif time.time() - self.strategy.last_save_time > self.save_every: # Save every X seconds 
+                    if self.strategy.model_snapshot >= self.max_snapshots: # Keep only last Y snapshots
                         self.strategy.model_snapshot = 0
-                        print(f"[DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
+                        print(f"--- [DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
 
                     os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
                     self.strategy.save_model(os.path.join(MODELS_DIR, f"{self.strategy.__str__()}_{self.strategy.model_snapshot}.pkl"))
@@ -87,11 +98,11 @@ class ZMQWorker:
         else: level = -1
         
         if status == "WARMUP":
-            sys.stdout.write(f"\r[WARMUP] Processed {len(results)} points. Latest: {last_val}")
+            sys.stdout.write(f"\r--- [WARMUP] Processed {len(results)} points. Latest: {last_val}")
         elif anomalies:
-            print(f"\n[!] ANOMALY DETECTED! Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {level}\\n")
+            print(f"\n--- [ANOMALY DETECTED] Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {level}\\n")
         else:
-            sys.stdout.write(f"\r[OK] Batch of {len(results)} points synced. Latest: {last_val}")
+            sys.stdout.write(f"\r--- [OK] Batch of {len(results)} points synced. Latest: {last_val}")
         
         sys.stdout.flush()
 
@@ -109,9 +120,3 @@ class ZMQWorker:
                 self.fn += 1
         precision = self.tp / (self.tp + self.fn) if (self.tp + self.fn) > 0 else 0
         print(f"Precision: {precision:.2f} (TP: {self.tp}, `FN: {self.fn})")
-
-    def save_model(self, path: str):
-        self.strategy.save_model(path)
-
-    def load_model(self, path: str):
-        self.strategy.load_model(path)
