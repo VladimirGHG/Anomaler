@@ -35,10 +35,10 @@ class AnomalyModel(ABC):
         pass
     
     def save_model(self, path):
-        """Saves the model to disk."""
-        joblib.dump(self.model, path)
+        """Saves the whole AnomalyModel object with the model to disk."""
+        joblib.dump(self, path)
         self.last_save_time = time.time()
-        print(f"[DISK] Model saved to {path}")
+        print(f"[DISK] AnomalyModel saved to {path}")
 
     @staticmethod
     def load_model(path):
