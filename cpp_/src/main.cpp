@@ -25,15 +25,23 @@ int main(int argc, char** argv) {
     double frequency = 0.05;
     int limit = 0;
     int batch_size = 50;
-    std::string model;
+    std::string source_type;
     std::string data_mode;
     std::string ml_model;
+    std::string readport;
+    std::string sensorname;
 
     // Data Mode: When creating a stream, the user shall specify the data source.
     // Users can create custom sources by implementing the DataSource interface and adding them to the SourceFactory.
-    stream_cmd->add_option("-s,--source", model, "The data source to use for the stream")
+    stream_cmd->add_option("-s,--source", source_type, "The data source to use for the stream")
               ->check(CLI::IsMember(SourceFactory::GetAvailableModes()))
               ->default_val("random");
+    
+    stream_cmd->add_option("--rp,--readport", readport, "ZeroMQ port for reading the data from the sensor")
+              ->capture_default_str();
+
+    stream_cmd->add_option("--sn,--sensorname", sensorname, "Name of the sensor")
+              ->capture_default_str();
 
     // Port: Must be a positive number
     stream_cmd->add_option("-p,--port", port, "ZeroMQ port for the PUSH/PULL bridge")
@@ -50,12 +58,25 @@ int main(int argc, char** argv) {
               ->check(CLI::NonNegativeNumber);
 
     // Data Mode: Restrict input to specific "Allowed" strings
-    stream_cmd->add_option("-m,--mode", data_mode, "The distribution pattern of the data")
+    stream_cmd->add_option("--dm,--data_mode", data_mode, "The distribution pattern of the data")
               ->check(CLI::IsMember({"normal", "noisy", "drift"}))
               ->default_val("normal");
 
-    stream_cmd->add_option("--ml,--ml_model", ml_model, "The anomaly detection model")
-              ->check(CLI::IsMember({"RiverHalfSpaceTrees", "SKlearnIsolatedForest"}))
+    stream_cmd->add_option("--ml,--ml_model", ml_model, "The anomaly detection model to load or to create from scratch")
+              ->check([](const std::string &input) {
+                // Check if it's a known keyword
+                if (input == "RiverHalfSpaceTrees" || input == "SKlearnIsolatedForest") {
+                    return std::string(); // Empty string means success
+                }
+                
+                // Check if it ends in .pkl
+                if (input.length() >= 4 && input.compare(input.length() - 4, 4, ".pkl") == 0) {
+                    return std::string(); // Success
+                }
+
+                // Return error message if neither
+                return std::string("Model must be a known type or a path ending in .pkl");
+              })
               ->default_val("SKlearnIsolatedForest");
               
     // Batch Size: Allow the user to specify how many points to send in each batch, with a default of 50 and a maximum of 1000 to prevent memory issues
@@ -76,7 +97,7 @@ int main(int argc, char** argv) {
     if (app.got_subcommand(stream_cmd)) {
         if (verbose) {
             std::cout << "[INFO] Initializing Stream on Port: " << port << std::endl;
-            std::cout << "[INFO] Pattern: " << model << " | Freq: " << frequency << "s" << std::endl;
+            std::cout << "[INFO] Pattern: " << source_type << " | Freq: " << frequency << "s" << std::endl;
         }
 
         // Initialize ZeroMQ Context
@@ -88,9 +109,9 @@ int main(int argc, char** argv) {
 
         nlohmann::json registration = {
             {"action", "start"},
-            {"port", port},      // from CLI11 option
-            {"model", model},    // from CLI11 option
-            {"mode", data_mode},  // from CLI11 option
+            {"port", port},         // from CLI11 option
+            {"model", source_type}, // from CLI11 option
+            {"mode", data_mode},    // from CLI11 option
             {"ml_model", ml_model}  // from CLI11 option
         };
 
@@ -113,14 +134,15 @@ int main(int argc, char** argv) {
         data_sender.socket.set(zmq::sockopt::immediate, 0);
         data_sender.socket.set(zmq::sockopt::linger, 0);
 
-        // Initialize the data source from the factory
-        auto source = SourceFactory::create(model, data_mode);
+        // Initialize the data source from which data points will be generated
+        auto source = SourceFactory::create(source_type, data_mode, readport, sensorname);
+
         std::cout << "[INFO] Starting data stream..." << std::endl;
         while(true){
-            SensorDataPoint current_val = source->getNextValue(); 
+            SensorDataPoint dp = source->getNextValue(); 
             // bool isAnomaly = source->wasAnomaly();
             // Create a stable point and add it to the stream
-            data_sender.stream.addDataPoint(current_val);
+            data_sender.stream.addDataPoint(dp);
 
             // Send if batch is ready
             if (data_sender.stream.dataPoints.size() >= batch_size) {

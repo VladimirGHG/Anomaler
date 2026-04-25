@@ -19,9 +19,7 @@ public:
      * @param mode The type of source (random, outlier, drift).
      * @return std::unique_ptr<DataSource> The requested source object.
      */
-    static const std::vector<std::string> GetAvailableModes() {
-        return {"random", "outlier"}; // Extend this list as new sources are added
-    }
+    static const std::vector<std::string> GetAvailableModes();
 
     static std::unique_ptr<DataSource> create(
         const std::string& mode, 
