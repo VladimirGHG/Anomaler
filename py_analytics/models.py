@@ -4,6 +4,8 @@ import numpy as np
 from river import drift, anomaly
 from enum import Enum
 import joblib
+import hashlib
+import os
 import time
 from sklearn.ensemble import IsolationForest
 from sklearn.utils import shuffle
@@ -22,29 +24,110 @@ class AnomalyModel(ABC):
 
     def __init__(self):
         self.name = None
-        self.data_buffer = []
+        self.model = None
         self.last_save_time = None
-        self.model_snapshot = 0
         self.drift_detector = None
+        self.data_buffer = []
+        self.config_hash = self._generate_config_hash()
+        self.version = "1.0.0"
+        self.is_fitted = False
+        self.model_snapshot = 0
+        self.window_size = 0
         self.median = 0
+        self.count = 0
         self.mad = 0
+
+        self.samples_seen_at_last_save = 0
 
     @abstractmethod
     def process_batch(self, mad, median, new_values: list[int]) -> list[dict]:
         """Processes a batch of values. Handles its own printing."""
         pass
     
-    def save_model(self, path):
+    def save_model(self, path, metrics = None):
         """Saves the whole AnomalyModel object with the model to disk."""
-        joblib.dump(self, path)
+        was_retrained = False
+    
+        if self.name == "RiverHalfSpaceTrees":
+            samples_since_save = self.count - self.samples_seen_at_last_save
+            if self.count == 0 or samples_since_save >= self.window_size:
+                was_retrained = True
+                self.samples_seen_at_last_save = self.count
+                
+        elif self.name == "SKlearnIsolatedForest":
+            if self.is_fitted:
+                was_retrained = True
+
+        new_version = self._get_next_version(was_retrained) # Major.Minor.Patch
+        self.version = new_version
+        self.config_hash = self._generate_config_hash()
+
+        metadata = {
+            "strategy_name": self.name,
+            "version": new_version, # Major.Minor.Patch
+            "parent_hash": getattr(self, 'current_hash', None),
+            "current_hash": self.config_hash,
+            "metrics": metrics or {},
+            "timestamp": time.time()
+        }
+        bundle = {
+            "metadata": metadata,
+            "model_state": self 
+        }
+    
+        filename = f"{self.name}_{metadata['version']}_{self.config_hash}.pkl"
+
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        joblib.dump(bundle, os.path.join(path, filename))
         self.last_save_time = time.time()
         print(f"[DISK] AnomalyModel saved to {path}")
 
     @staticmethod
     def load_model(path):
-        """Loads the model from disk."""
-        return joblib.load(path)
+        """Loads the bundle and returns the restored AnomalyModel object."""
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Model file not found at {path}")
 
+        bundle = joblib.load(path)
+        
+        metadata = bundle.get("metadata", {})
+        model_obj = bundle.get("model_state")
+
+        print(f"--- Loading Model ---")
+        print(f"Strategy: {metadata.get('strategy_name')}")
+        print(f"Version:  {metadata.get('version')}")
+        print(f"Created:  {time.ctime(metadata.get('timestamp'))}")
+        
+        actual_hash = model_obj._generate_config_hash()
+        if actual_hash != metadata.get("current_hash"):
+            print("[WARNING] Config hash mismatch! Model might have been modified.")
+
+        return model_obj
+    
+    def _generate_config_hash(self):
+        """Creates a fingerprint of the hyperparameters only."""
+        relevant_params = {k: v for k, v in self.__dict__.items() 
+                          if isinstance(v, (int, float, str, bool, Enum))}
+        return hashlib.md5(str(sorted(relevant_params.items())).encode()).hexdigest()
+
+    def _get_next_version(self, was_retrained: bool):
+        major, minor, patch = map(int, self.version.split('.'))
+
+        current_config_hash = self._generate_config_hash()
+        config_changed = current_config_hash != self.config_hash
+        
+        if was_retrained:
+            minor += 1
+            patch = 0
+        elif config_changed:
+            patch += 1
+        else:
+            patch += 1
+
+        return f"{major}.{minor}.{patch}"
+    
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
     def __init__(self, window_size=250, drift_policy=RiverDriftPolicy.RESET):
@@ -62,6 +145,11 @@ class RiverStrategy(AnomalyModel):
     def _init_model(self):
         self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (-100, 100)})
 
+    @property
+    def is_fitted(self):
+        # The model is "fitted" if it has processed at least one full window
+        return self.count >= self.window_size
+    
     def process_batch(self, mad, median, new_values) -> list[dict]:
 
         results = []
@@ -72,8 +160,9 @@ class RiverStrategy(AnomalyModel):
                 if self.drift_detector.drift_detected:
                     if self.drift_policy == RiverDriftPolicy.RESET:
                         print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
-                        self.model = self._init_model()
+                        self._init_model()
                         self.count = 0 # Reset warmup count as well
+                        self.samples_seen_at_last_save = -1
                     
                 # Still in Warmup
                 if self.count < self.window_size:
