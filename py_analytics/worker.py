@@ -12,7 +12,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, port, strategy: AnomalyModel, load_path: str = "", save_every: int = 60, max_snapshots: int = 10):
+    def __init__(self, port, strategy: AnomalyModel, load_path: str = "", save_every: int = 15, max_snapshots: int = 10):
         self.port = port
         self.strategy = strategy
         self.context = zmq.Context()
