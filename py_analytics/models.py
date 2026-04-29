@@ -22,20 +22,18 @@ class AnomalyModel(ABC):
     model: Any
     last_report_time: Optional[float]
 
-    def __init__(self):
-        self.name = None
-        self.model = None
-        self.last_save_time = None
-        self.drift_detector = None
-        self.data_buffer = []
-        self.config_hash = self._generate_config_hash()
+    def __init__(self, name: str):
+        self.name = name
         self.version = "1.0.0"
         self.is_fitted = False
+        self.count = 0 # Counts how many data points have been processed, used for warmup phase control
+
+        self.drift_detector = drift.ADWIN()
+        self.data_buffer = []
+
+        self.config_hash = self._generate_config_hash()
+        self.last_save_time = time.time()
         self.model_snapshot = 0
-        self.window_size = 0
-        self.median = 0
-        self.count = 0
-        self.mad = 0
 
         self.samples_seen_at_last_save = 0
 
@@ -44,45 +42,30 @@ class AnomalyModel(ABC):
         """Processes a batch of values. Handles its own printing."""
         pass
     
-    def save_model(self, path, metrics = None):
-        """Saves the whole AnomalyModel object with the model to disk."""
-        was_retrained = False
-    
-        if self.name == "RiverHalfSpaceTrees":
-            samples_since_save = self.count - self.samples_seen_at_last_save
-            if self.count == 0 or samples_since_save >= self.window_size:
-                was_retrained = True
-                self.samples_seen_at_last_save = self.count
-                
-        elif self.name == "SKlearnIsolatedForest":
-            if self.is_fitted:
-                was_retrained = True
+    def save_model(self, path, metrics=None):
+        # 1. Determine retraining status
+        was_retrained = self._check_if_retrained()
 
-        new_version = self._get_next_version(was_retrained) # Major.Minor.Patch
-        self.version = new_version
+        # 2. Update Versioning
+        self.version = self._get_next_version(was_retrained)
         self.config_hash = self._generate_config_hash()
 
+        # 3. Bundle and Save
         metadata = {
-            "strategy_name": self.name,
-            "version": new_version, # Major.Minor.Patch
-            "parent_hash": getattr(self, 'current_hash', None),
-            "current_hash": self.config_hash,
+            "strategy": self.name,
+            "version": self.version,
             "metrics": metrics or {},
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "hash": self.config_hash
         }
-        bundle = {
-            "metadata": metadata,
-            "model_state": self 
-        }
-    
-        filename = f"{self.name}_{metadata['version']}_{self.config_hash}.pkl"
-
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        joblib.dump(bundle, os.path.join(path, filename))
+        
+        os.makedirs(path, exist_ok=True)
+        filename = f"{self.name}_v{self.version}_{self.config_hash[:8]}.pkl"
+        joblib.dump({"metadata": metadata, "model_state": self}, os.path.join(path, filename))
         self.last_save_time = time.time()
-        print(f"[DISK] AnomalyModel saved to {path}")
+        self.samples_seen_at_last_save = self.count
+
+        print(f"[DISK] Saved {filename}")
 
     @staticmethod
     def load_model(path):
@@ -106,6 +89,12 @@ class AnomalyModel(ABC):
 
         return model_obj
     
+    def _check_if_retrained(self) -> bool:
+        """Default logic for retraining check."""
+        if self.name == "RiverHalfSpaceTrees":
+            return self.count == 0 or (self.count - self.samples_seen_at_last_save) >= getattr(self, 'window_size', 250)
+        return self.is_fitted
+
     def _generate_config_hash(self):
         """Creates a fingerprint of the hyperparameters only."""
         relevant_params = {k: v for k, v in self.__dict__.items() 
@@ -131,16 +120,10 @@ class AnomalyModel(ABC):
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
     def __init__(self, window_size=250, drift_policy=RiverDriftPolicy.RESET):
-        
-        self.name = "RiverHalfSpaceTrees"
+        super().__init__("RiverHalfSpaceTrees")
         self.window_size = window_size
         self.drift_policy = drift_policy
         self._init_model()
-        self.model_snapshot = 0
-        self.last_save_time = None
-        self.count = 0 # Counts how many data points have been processed, used for warmup phase control
-
-        self.drift_detector = drift.ADWIN()
 
     def _init_model(self):
         self.model = anomaly.HalfSpaceTrees(window_size=self.window_size, n_trees=25, limits={"v": (-100, 100)})
@@ -154,31 +137,31 @@ class RiverStrategy(AnomalyModel):
 
         results = []
         for v in new_values:
-                feature_dict = {"v": v}
-                self.drift_detector.update(v)
+            feature_dict = {"v": v}
+            self.drift_detector.update(v)
 
-                if self.drift_detector.drift_detected:
-                    if self.drift_policy == RiverDriftPolicy.RESET:
-                        print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
-                        self._init_model()
-                        self.count = 0 # Reset warmup count as well
-                        self.samples_seen_at_last_save = -1
-                    
-                # Still in Warmup
-                if self.count < self.window_size:
-                    self.model.learn_one(feature_dict)
-                    results.append(
-                        {"val": v, "is_anomaly": False, "score": -1, "status": "WARMUP"})
-                    self.count += 1
-                else:
-                    score = self.model.score_one(feature_dict)
-                    self.model.learn_one(feature_dict)
-                    results.append({
-                        "val": v,
-                        "is_anomaly": score > 0.7,
-                        "score": score,
-                        "status": "READY"
-                    })
+            if self.drift_detector.drift_detected:
+                if self.drift_policy == RiverDriftPolicy.RESET:
+                    print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+                    self._init_model()
+                    self.count = 0 # Reset warmup count as well
+                    self.samples_seen_at_last_save = -1
+                
+            # Still in Warmup
+            if self.count < self.window_size:
+                self.model.learn_one(feature_dict)
+                results.append(
+                    {"val": v, "is_anomaly": False, "score": -1, "status": "WARMUP"})
+                self.count += 1
+            else:
+                score = self.model.score_one(feature_dict)
+                self.model.learn_one(feature_dict)
+                results.append({
+                    "val": v,
+                    "is_anomaly": score > 0.7,
+                    "score": score,
+                    "status": "READY"
+                })
         return results
 
     def __str__(self) -> str:
@@ -188,17 +171,11 @@ class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
     def __init__(self, contamination=0.01, buffer_limit=50, max_buffer_size=200, buffer_policy=BatchBufferPolicy.CLEAR_ON_DRIFT):
 
-        self.name = "SKlearnIsolatedForest"
+        super().__init__("SKlearnIsolatedForest")
         self.model = IsolationForest(contamination=contamination, random_state=42)
-        self.data_buffer = []
-        self.last_save_time = None
-        self.model_snapshot = 0
         self.buffer_limit = buffer_limit # Minimum number of data points to start training, even if we detect drift before reaching this limit. This allows us to have a stable initial model before we start reacting to drift.
         self.max_buffer_size = max_buffer_size # Maximum number of data points to keep in the buffer for training, even if we clear on drift. This allows us to have a sliding window of recent data for training after a drift event.
-        self.buffer_policy = buffer_policy #
-
-        self.drift_detector = drift.ADWIN()
-        self.is_fitted = False
+        self.buffer_policy = buffer_policy # Policy to determine how to manage the buffer when drift is detected. CLEAR_ON_DRIFT will clear the buffer immediately, while KEEP_WINDOW will keep the last max_buffer_size data points as a sliding window for training.
         self.retrain_needed = False
 
     def process_batch(self, mad, median, new_values) -> list[dict]:
