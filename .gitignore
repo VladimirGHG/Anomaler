@@ -4,7 +4,6 @@ cpp_/builds/*
 py_analytics/.venv
 py_analytics/models/*
 !py_analytics/models/.gitkeep
-!py_analytics/models/archive/
 test.*
 vcpkg/packages/
 vcpkg/buildtrees/

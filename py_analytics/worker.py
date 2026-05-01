@@ -3,6 +3,7 @@ import zmq
 from .models import AnomalyModel
 from sklearn.utils import shuffle
 import numpy as np
+import joblib
 import sys
 import time
 import json
@@ -63,7 +64,6 @@ class ZMQWorker:
                 # If a model loading path was provided when the worker was created, than load the model.
                 if self.load_path:
                     self.strategy.model = self.strategy.load_model(self.load_path)
-
                 # If there are newly received data points process them and report the results.
                 if all_new_values:
                     results = self.strategy.process_batch(self.mad, self.median, all_new_values)
@@ -79,14 +79,15 @@ class ZMQWorker:
                         print(f"--- [DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
 
                     os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
-                    self.strategy.save_model(os.path.join(MODELS_DIR, f"{self.strategy.__str__()}_{self.strategy.model_snapshot}.pkl"))
+                    self.strategy.save_model(os.path.join(MODELS_DIR, self.strategy.name))
                     self.strategy.last_save_time = time.time()
                     self.strategy.model_snapshot += 1
 
                 # if results:
                 #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
 
-    def report(self, results):
+    def report(self, results: list[dict]):
+        """Prints the results of the anomaly detection in a readable format."""
         if not results:
             return
 
