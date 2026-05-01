@@ -3,7 +3,7 @@ import json
 import time
 from datetime import datetime
 
-def inject_anomaly(port, value_to_inject):
+def inject_anomaly(port: int, value_to_inject: float):
     context = zmq.Context()
     sender = context.socket(zmq.PUB) 
     sender.connect(f"tcp://127.0.0.1:{port}")

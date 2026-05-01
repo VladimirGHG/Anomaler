@@ -34,6 +34,7 @@ class AnomalyModel(ABC):
         self.config_hash = self._generate_config_hash()
         self.last_save_time = time.time()
         self.model_snapshot = 0
+        self.parent_hash = None
 
         self.samples_seen_at_last_save = 0
 
@@ -43,29 +44,31 @@ class AnomalyModel(ABC):
         pass
     
     def save_model(self, path, metrics=None):
-        # 1. Determine retraining status
+        # Determine retraining status
         was_retrained = self._check_if_retrained()
 
-        # 2. Update Versioning
+        # Update Versioning
         self.version = self._get_next_version(was_retrained)
         self.config_hash = self._generate_config_hash()
 
-        # 3. Bundle and Save
+        # Bundle and Save
         metadata = {
             "strategy": self.name,
             "version": self.version,
             "metrics": metrics or {},
+            "parent_hash": getattr(self, "parent_hash", "None"),
             "timestamp": time.time(),
-            "hash": self.config_hash
+            "current_hash": self.config_hash
         }
         
         os.makedirs(path, exist_ok=True)
-        filename = f"{self.name}_v{self.version}_{self.config_hash[:8]}.pkl"
-        joblib.dump({"metadata": metadata, "model_state": self}, os.path.join(path, filename))
+        filename = f"{self.version}_{self.config_hash[:8]}.pkl"
+        full_save_path = os.path.join(path, filename)
+        joblib.dump({"metadata": metadata, "model_state": self}, full_save_path)
         self.last_save_time = time.time()
         self.samples_seen_at_last_save = self.count
 
-        print(f"[DISK] Saved {filename}")
+        print(f"[DISK] Saved to {full_save_path}")
 
     @staticmethod
     def load_model(path):
@@ -77,12 +80,9 @@ class AnomalyModel(ABC):
         
         metadata = bundle.get("metadata", {})
         model_obj = bundle.get("model_state")
-
+        model_obj.parent_hash = metadata.get("current_hash", "None")
         print(f"--- Loading Model ---")
-        print(f"Strategy: {metadata.get('strategy_name')}")
-        print(f"Version:  {metadata.get('version')}")
-        print(f"Created:  {time.ctime(metadata.get('timestamp'))}")
-        
+        print(f"Metadata: {metadata}")
         actual_hash = model_obj._generate_config_hash()
         if actual_hash != metadata.get("current_hash"):
             print("[WARNING] Config hash mismatch! Model might have been modified.")
@@ -119,7 +119,7 @@ class AnomalyModel(ABC):
     
 class RiverStrategy(AnomalyModel):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
-    def __init__(self, window_size=250, drift_policy=RiverDriftPolicy.RESET):
+    def __init__(self, window_size: int = 250, drift_policy: RiverDriftPolicy = RiverDriftPolicy.RESET):
         super().__init__("RiverHalfSpaceTrees")
         self.window_size = window_size
         self.drift_policy = drift_policy
@@ -169,7 +169,7 @@ class RiverStrategy(AnomalyModel):
 
 class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
-    def __init__(self, contamination=0.01, buffer_limit=50, max_buffer_size=200, buffer_policy=BatchBufferPolicy.CLEAR_ON_DRIFT):
+    def __init__(self, contamination: float = 0.01, buffer_limit: int = 50, max_buffer_size: int = 200, buffer_policy: BatchBufferPolicy = BatchBufferPolicy.CLEAR_ON_DRIFT):
 
         super().__init__("SKlearnIsolatedForest")
         self.model = IsolationForest(contamination=contamination, random_state=42)
