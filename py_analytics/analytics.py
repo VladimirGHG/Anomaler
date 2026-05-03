@@ -25,8 +25,8 @@ def run_model_worker_process(
         models = get_saved_models(folder_path=folder)
         if Amodel in [str(model) for model in models]:
             strategy = joblib.load(Amodel)['model_state']
-            print(f"--- [LOADED] {joblib.load(Amodel)['metadata']}")
-            print(f"--- [LOADED] {Amodel}")
+            # print(f"--- [LOADED] {joblib.load(Amodel)['metadata']}")
+            strategy.logger.info(f"--- [LOADED] {joblib.load(Amodel)['metadata']}")
         else:
             raise NameError("--- [ERROR] Please provide a valid path to load an Amodel model")
     else:
