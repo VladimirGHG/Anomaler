@@ -9,6 +9,7 @@ import os
 import time
 from sklearn.ensemble import IsolationForest
 from sklearn.utils import shuffle
+from model_logger import ModelLogger
 
 class RiverDriftPolicy(Enum):
     RESET = "reset" # Reset the model to scratch
@@ -37,6 +38,10 @@ class AnomalyModel(ABC):
         self.parent_hash = None
 
         self.samples_seen_at_last_save = 0
+
+        # Create a unique identifier for the logger of the model.
+        self.uid = f"{self.name}_v{self.version}_{self.config_hash[:8]}"
+        self.logger = ModelLogger(self.uid)
 
     @abstractmethod
     def process_batch(self, mad, median, new_values: list[int]) -> list[dict]:
@@ -68,7 +73,8 @@ class AnomalyModel(ABC):
         self.last_save_time = time.time()
         self.samples_seen_at_last_save = self.count
 
-        print(f"[DISK] Saved to {full_save_path}")
+        # print(f"[DISK] Saved to {full_save_path}")
+        self.logger.info(f"[DISK] Saved to {full_save_path}")
 
     @staticmethod
     def load_model(path):
@@ -86,7 +92,7 @@ class AnomalyModel(ABC):
         actual_hash = model_obj._generate_config_hash()
         if actual_hash != metadata.get("current_hash"):
             print("[WARNING] Config hash mismatch! Model might have been modified.")
-
+            
         return model_obj
     
     def _check_if_retrained(self) -> bool:
@@ -142,7 +148,10 @@ class RiverStrategy(AnomalyModel):
 
             if self.drift_detector.drift_detected:
                 if self.drift_policy == RiverDriftPolicy.RESET:
-                    print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+
+                    # print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+                    self.logger.info(f"\n[DRIFT] Concept drift detected at value: {v}. Resetting model...") 
+
                     self._init_model()
                     self.count = 0 # Reset warmup count as well
                     self.samples_seen_at_last_save = -1
@@ -187,7 +196,10 @@ class IsolationForestStrategy(AnomalyModel):
         for v in new_values:
             self.drift_detector.update(v)
             if self.drift_detector.drift_detected:
-                print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+
+                # print(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+                self.logger.info(f"\n[DRIFT] Concept drift detected at value: {v}. Retraining model...")
+
                 self.retrain_needed = True
                 if self.buffer_policy == BatchBufferPolicy.CLEAR_ON_DRIFT:
                     self.is_fitted = False # Reset fitted status to trigger warmup phase again
@@ -204,7 +216,9 @@ class IsolationForestStrategy(AnomalyModel):
         return self._generate_results(mad, median, new_values)
     
     def _train_model(self):
-        print(f"\n[TRAINING] Fitting IsolationForest with {len(self.data_buffer)} data points...")
+        # print(f"\n[TRAINING] Fitting IsolationForest with {len(self.data_buffer)} data points...")
+        self.logger.info(f"\n[TRAINING] Fitting IsolationForest with {len(self.data_buffer)} data points...")
+
         X = np.array(self.data_buffer).reshape(-1, 1)
         self.model.fit(shuffle(X, random_state=42))
         self.is_fitted = True
@@ -215,7 +229,8 @@ class IsolationForestStrategy(AnomalyModel):
         if not self.is_fitted:
             # Still in Warmup
             for v in new_values:
-                print(f"\n[DEBUG] Processing value: {v} (WARMUP)")
+                # print(f"\n[DEBUG] Processing value: {v} (WARMUP)")
+                self.logger.debug(f"Processing value: {v} (WARMUP)")
                 results.append({"val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
         else:
             # Model is ready, predict the batch
