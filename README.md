@@ -3,6 +3,33 @@
 ## Overview
 Anomaler is a C++ system for streaming structured data to an anomaly detection model. It supports both training and real-time evaluation, enabling efficient end-to-end anomaly detection across arbitrary data types. The system is designed to be modular, flexible, and compatible with ML pipelines.
 
+## Prerequisites
+To build and run Anomaler, ensure the following dependencies are installed:
+
+### System and Build Tools:
+* **C++17/20** Compiler: Modern Clang or GCC.
+* **CMake** (>=3.15) and **Makefile**, for build orchestration.
+
+### C++ Dependencies (vcpkg)
+* **ZeroMQ** (cppzmq): For high-throughput, asynchronous data transmission.
+* **CLI11**: For robust command line parsing.
+* **nlohmann_json**: For JSON serialization between C++ and Python.
+
+### Clone the Repo
+    git clone https://github.com/VladimirGHG/Anomaler.git
+
+### Python
+* Download the required libraries mentioned in *requirements.txt*, using:
+    `pip install -r requirements.txt`
+
+### C++
+* Anomaler uses [vcpkg](https://github.com/microsoft/vcpkg) to manage C++ dependencies. Install by running:
+    `vcpkg install zeromq nlohmann-json cppzmq`
+* After installing all the needed packages, build the C++ Manager, and run CMake while pointing to your vcpkg toolchain file:\
+  `cd builds`\
+  `cmake .. -DCMAKE_TOOLCHAIN_FILE=[path/to/vcpkg]/scripts/buildsystems/vcpkg.cmake`\
+  `cmake --builds .`
+
 ## Features
 **End-to-end support**: Anomaler supports the end-to-end cycle of developing an anomaly detection model, from data generation and transformation to model training and evaluation.
 
@@ -40,7 +67,7 @@ Anomaler consists of two main parts:
       * *RandomSource.cpp* generates random values and, with a chance of 1%, injects an outlier (anomaly).
       * *SerialSensorSource.cpp* is a real data source that receives and formats the numerical data from sensors.
   
-    * *DataPoints.cpp* is an abstraction for sending data from C++ to Python more conveniently. With each new data point from the sensor, a        new *DataPoint* object is created. It has three attributes: value, isAnomaly, timestamp.
+    * *DataPoints.cpp* is an abstraction for sending data from C++ to Python more conveniently. With each new data point from the sensor, a        new *DataPoint* object is created. It has three attributes: value, isAnomaly, and timestamp.
       * value: can be any object from *DataValue* defined in *DataTypes.h*.
       * isAnomaly: Used for testing purposes, for instance, when a person purposefully injects an anomalous value to check the                     precision of the ML model.
       * timestamp: Might be helpful again for testing/logging, and if the system is used in real-world anomaly detection tasks, to identify        when an anomaly happened.
@@ -51,18 +78,5 @@ Anomaler consists of two main parts:
   * *vcpkg* is a package manager for C++ packages. Needed for easy use of the system.
   * *Makefile* is used for easily building the build by running just the make command in the terminal.
     
-## Prerequisites
-To build and run Anomaler, ensure the following dependencies are installed:
 
-### System and Build Tools:
-* **C++17/20** Compiler: Modern Clang or GCC.
-* **CMake** (>=3.15) and **Makefile**, for build orchestration.
 
-### C++ Dependancies (vcpkg)
-* **ZeroMQ** (cppzmq): High-throughput data transmission.
-* **CLI11**: Command line parsing.
-* **nlohmann_json**: JSON serialization.
-
-### Python
-* Download the required libraries mentioned in *requirements.txt*, using: `pip install -r requirements.txt`
-  
