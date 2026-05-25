@@ -1,6 +1,7 @@
 import os
 import zmq
 from .models import AnomalyModel
+from .model_logger import ModelLogger
 from sklearn.utils import shuffle
 import numpy as np
 import joblib
@@ -13,7 +14,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, port, strategy: AnomalyModel, load_path: str = "", save_every: int = 15, max_snapshots: int = 10):
+    def __init__(self, port, strategy: AnomalyModel, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
         self.port = port
         self.strategy = strategy
         self.context = zmq.Context()
@@ -33,6 +34,7 @@ class ZMQWorker:
         self.mad = np.median(np.abs(arr - self.median)) * 1.4826 # A scaling factor to make MAD comparable to STD for normal data distributions
     
     def start(self):
+        time_lst = []
         while True:
             if os.getppid() == 1: break
 
@@ -49,9 +51,9 @@ class ZMQWorker:
                         break # Queue is empty
                 
                 # Flatten all data points from all packets received
-                all_new_values = []
+                all_new_values = {}
                 for packet in batch_of_packets:
-                    all_new_values.extend([p["value"] for p in packet["datapoints"]])
+                    all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
 
                 if self.strategy.name == "SKlearnIsolatedForest":
                     if all_new_values:
@@ -104,7 +106,7 @@ class ZMQWorker:
             print(f"\n--- [ANOMALY DETECTED] Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {level}\\n")
         else:
             sys.stdout.write(f"\r--- [OK] Batch of {len(results)} points synced. Latest: {last_val}")
-        
+        self.strategy.logger.info(f"Processed batch of {results}")
         sys.stdout.flush()
 
     def calculate_precision(self, results, data_points, status):

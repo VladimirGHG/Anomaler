@@ -7,9 +7,10 @@ import joblib
 import hashlib
 import os
 import time
+from datetime import datetime  
 from sklearn.ensemble import IsolationForest
 from sklearn.utils import shuffle
-from model_logger import ModelLogger
+from .model_logger import ModelLogger
 
 class RiverDriftPolicy(Enum):
     RESET = "reset" # Reset the model to scratch
@@ -44,7 +45,7 @@ class AnomalyModel(ABC):
         self.logger = ModelLogger(self.uid)
 
     @abstractmethod
-    def process_batch(self, mad, median, new_values: list[int]) -> list[dict]:
+    def process_batch(self, mad, median, new_values: dict[str, int]) -> list[dict]:
         """Processes a batch of values. Handles its own printing."""
         pass
     
@@ -142,7 +143,7 @@ class RiverStrategy(AnomalyModel):
     def process_batch(self, mad, median, new_values) -> list[dict]:
 
         results = []
-        for v in new_values:
+        for time_, v in new_values.items():
             feature_dict = {"v": v}
             self.drift_detector.update(v)
 
@@ -188,12 +189,12 @@ class IsolationForestStrategy(AnomalyModel):
         self.retrain_needed = False
 
     def process_batch(self, mad, median, new_values) -> list[dict]:
-        self.data_buffer.extend(new_values)
+        self.data_buffer.extend(list(new_values.values()))
 
         if len(self.data_buffer) > self.max_buffer_size:
             self.data_buffer = self.data_buffer[-self.max_buffer_size:]
 
-        for v in new_values:
+        for time_, v in new_values.items():
             self.drift_detector.update(v)
             if self.drift_detector.drift_detected:
 
@@ -228,15 +229,23 @@ class IsolationForestStrategy(AnomalyModel):
         results = []
         if not self.is_fitted:
             # Still in Warmup
-            for v in new_values:
+            for time_, v in new_values.items():
                 # print(f"\n[DEBUG] Processing value: {v} (WARMUP)")
                 self.logger.debug(f"Processing value: {v} (WARMUP)")
                 results.append({"val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
         else:
             # Model is ready, predict the batch
-            predictions = self.model.predict(np.array(new_values).reshape(-1, 1))
-            for v, pred in zip(new_values, predictions):
-                results.append({"val": v, "is_anomaly": (pred == -1), "anomaly_level": self.anomaly_level(mad, median, v),"status": "READY"})
+            pred_start_time = time.time()
+            predictions = self.model.predict(np.array(list(new_values.values())).reshape(-1, 1))
+            pred_end_time = time.time()
+            total_pred_time = pred_end_time - pred_start_time
+            time_format = "%Y-%m-%d %H:%M:%S.%f"
+            on_each_time = total_pred_time / len(new_values) if new_values else 0
+            for i, ((time_, v), pred) in enumerate(zip(new_values.items(), predictions)):
+                print(f"time_: {time_}\n")
+                comp_time = datetime.strptime(time_, time_format).timestamp()
+                total_process_time = (pred_start_time - comp_time) + i * on_each_time # Approximate the time taken for the entire process of this value.
+                results.append({"val": v, "is_anomaly": (pred == -1), "anomaly_level": self.anomaly_level(mad, median, v), "processed_in": total_process_time, "status": "READY"})
 
         return results
     
