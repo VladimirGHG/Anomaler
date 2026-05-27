@@ -1,5 +1,7 @@
 #include "DataStream.h"
 #include <nlohmann/json.hpp>
+#include "telemetry_generated.h"
+#include <type_traits>
 
 // DataStream class to manage a collection of SensorDataPoints
 void DataStream::addDataPoint(const SensorDataPoint& dataPoint) {
@@ -50,6 +52,43 @@ std::string DataStream::toJson(bool pretty, long long limit) const {
     }
 
     return pretty ? j.dump(4) : j.dump();
+}
+
+std::vector<std::vector<uint8_t>> DataStream::toFlatBuffers(long long limit) const {
+    std::vector<std::vector<uint8_t>> serialized_messages;
+    size_t total = dataPoints.size();
+    
+    size_t count = (limit > 0 && (size_t)limit < total) ? (size_t)limit : total;
+    size_t start_idx = total - count;
+
+    for (size_t i = start_idx; i < total; ++i) {
+        const auto& dp = dataPoints[i];
+        
+        double extracted_value = 0.0;
+        std::visit([&](auto&& arg) { 
+            using T = std::decay_t<decltype(arg)>; 
+            
+            if constexpr (std::is_same_v<T, std::string>) {
+                extracted_value = std::stod(arg);
+            }
+        }, dp.getValue());
+        double extracted_timestamp = std::stod(dp.getTimestamp());
+
+        flatbuffers::FlatBufferBuilder builder(64);
+        auto message_offset = Anomaler::Serialization::CreateTelemetryMessage(
+            builder, 
+            extracted_timestamp, 
+            extracted_value
+        );
+        builder.Finish(message_offset);
+
+        uint8_t* buf = builder.GetBufferPointer();
+        size_t size = builder.GetSize();
+        
+        serialized_messages.push_back(std::vector<uint8_t>(buf, buf + size));
+    }
+
+    return serialized_messages;
 }
 
 // Export datapoints to JSON file for Python training

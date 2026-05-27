@@ -1,0 +1,8 @@
+namespace Anomaler.Serialization;
+
+table TelemetryMessage {
+    timestamp:double;
+    value:double;
+}
+
+root_type TelemetryMessage;
