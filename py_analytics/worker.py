@@ -1,16 +1,16 @@
 import os
-import zmq
-from .models import AnomalyModel
-from .model_logger import ModelLogger
-from sklearn.utils import shuffle
-import numpy as np
-import joblib
 import sys
 import time
 import json
 
+import zmq
+import numpy as np
+
+from .models.base import AnomalyModel
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+MODELS_DIR = os.path.join(BASE_DIR, "models_saved")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
@@ -103,10 +103,12 @@ class ZMQWorker:
         if status == "WARMUP":
             sys.stdout.write(f"\r--- [WARMUP] Processed {len(results)} points. Latest: {last_val}")
         elif anomalies:
+            self.strategy.logger.warning(f"Found {len(anomalies)} anomalies in batch of {len(results)}. Anomaly Level: {level}")
             print(f"\n--- [ANOMALY DETECTED] Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {level}\\n")
         else:
+            self.strategy.logger.info(f"Processed batch of {len(results)} points. Latest: {last_val}")
             sys.stdout.write(f"\r--- [OK] Batch of {len(results)} points synced. Latest: {last_val}")
-        self.strategy.logger.info(f"Processed batch of {results}")
+        # self.strategy.logger.info(f"Processed batch of {results}")
         sys.stdout.flush()
 
     def calculate_precision(self, results, data_points, status):
