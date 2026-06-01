@@ -1,11 +1,14 @@
 import sys
 import multiprocessing
 import signal
+
 import zmq
-from .models import IsolationForestStrategy, RiverStrategy
-from .worker import ZMQWorker
-from pathlib import Path
 import joblib
+from pathlib import Path
+
+from .models.river_strategy import RiverStrategy
+from .models.sklearn_strategies.isolationforest_strategy import IsolationForestStrategy
+from .worker import ZMQWorker
 
 active_workers = []
 

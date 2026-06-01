@@ -22,7 +22,6 @@ SerialSensorSource::SerialSensorSource(const std::string& port_name, const std::
 
     sp_flush(port, SP_BUF_BOTH); 
     
-    // Give Arduino 2 seconds to finish its boot sequence
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 }
 
@@ -34,7 +33,6 @@ SerialSensorSource::~SerialSensorSource() {
 
     sp_flush(port, SP_BUF_BOTH); 
     
-    // Give Arduino 2 seconds to finish its boot sequence
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 }
 

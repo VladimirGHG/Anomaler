@@ -4,7 +4,7 @@ cpp_/include/telemetry_generated.h
 !cpp_/builds/.gitkeep
 py_analytics/.venv
 py_analytics/Anomaler/*
-py_analytics/models/*
+py_analytics/models_saved/*
 !py_analytics/models/.gitkeep
 test.*
 vcpkg/packages/
