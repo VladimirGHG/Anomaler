@@ -48,13 +48,17 @@ To build and run Anomaler, ensure the following dependencies are installed:
 
 Anomaler consists of two main parts: 
 * The *py_analytics* part, where the ML models and everything connected with them are defined
-  * *models/* is the folder where the snapshots are saved by default.
-
-  * *analytics.py* is what needs to be run to connect the Python side to Cpp. Starts the manager tracking a specific port for messages from     the CLI to start a ZMQWorker with specific settings.
+  * *models_saved/* is the folder where the snapshots are saved by default.
+  
+  * *main.py* is what needs to be run to connect the Python side to Cpp. The manager starts tracking a specific port for CLI messages to start a ZMQWorker with specific settings.
   * *anomalytrig.py* a small script used to inject anomalies into the data stream, for Amodel-testing purposes.
-  * *amodels.py*  is where the two types of Amodels' source codes are: *RiverStrategy*, and *IsolatedForestStrategy* classes.
-  * *worker.py* is the worker that is initialized by the manager to wait for packages from the cpp side and perform model snapshots' saving     and loading, as well as report, log, and provide basic model precision metrics.
-    
+  * *worker.py* is the worker that is initialized by the manager to wait for packages from the C++ side and perform model snapshots' saving     and loading, as well as report, log, and provide basic model precision metrics.
+  * *models/* is the folder containing all the ML strategies (Amodels).
+      * *base.py* contains the abstract class that all the strategies (Amodels) of the system must inherit from.
+      * *river_strategy.py*  is where the online-based *HalfSpaceTrees*'s wrapper *RiverStrategy* class is located.
+      * *sklearn_strategies/* contains scikit-learn-based strategies. 
+          * *isolationforest_strategy.py* contains *IsolationForestStrategy* wrapper class for the scikit-learn's *IsolationForest*.
+
 * The *cpp_* part, which is responsible for data generation, data transformation, and data transfer to the Python side.
   * *builds/* is the folder where the builds of the system are stored.
   * *include/* stores the header files with initial definitions of the classes.
