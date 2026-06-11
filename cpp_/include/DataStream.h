@@ -21,7 +21,7 @@ public:
     void clear(int toRemove = -1);
 
     std::string toJson(bool pretty=false, long long limit=-1) const;
-    std::vector<std::vector<uint8_t>> toFlatBuffers(long long limit) const;
+    std::vector<uint8_t> toFlatBuffers(long long limit) const;
     
     void exportToJsonFile(const std::string& filename) const;
 

@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+from datetime import datetime
 
 import zmq
 import numpy as np
@@ -14,7 +15,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models_saved")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, port, strategy: AnomalyModel, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
+    def __init__(self, port, strategy: AnomalyModel, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
         self.port = port
         self.strategy = strategy
         self.context = zmq.Context()
@@ -28,6 +29,13 @@ class ZMQWorker:
         self.save_every = save_every
         self.max_snapshots = max_snapshots
 
+        if serialization.lower() not in ["json", "flatbuffers"]:
+            raise ValueError(f"Unsupported serialization protocol: {serialization}. Supported: 'json', 'flatbuffers'")
+        elif serialization.lower() == "flatbuffers":
+            self.func = self._decode_flatbuffer
+        else:       
+            self.func = self._decode_json
+
     def get_median_mad(self, data_points: list[int]):
         arr = np.asanyarray(data_points) # Convert to numpy array for faster calculations and less memory usasge
         self.median = np.median(arr)
@@ -37,7 +45,6 @@ class ZMQWorker:
         time_lst = []
         while True:
             if os.getppid() == 1: break
-
             # Check if there is data
             if self.receiver.poll(1000):
                 batch_of_packets = []
@@ -45,8 +52,12 @@ class ZMQWorker:
                 # Greedy Read: Grab everything currently in the ZeroMQ buffer
                 while True:
                     try:
-                        msg = self.receiver.recv_string(flags=zmq.NOBLOCK)
-                        batch_of_packets.append(json.loads(msg))
+                        raw = self.receiver.recv(flags=zmq.NOBLOCK)
+
+                        packet = self.func(raw)
+                        if packet:
+                            print(packet)
+                            batch_of_packets.append(packet)
                     except zmq.Again:
                         break # Queue is empty
                 
@@ -125,3 +136,55 @@ class ZMQWorker:
                 self.fn += 1
         precision = self.tp / (self.tp + self.fn) if (self.tp + self.fn) > 0 else 0
         print(f"Precision: {precision:.2f} (TP: {self.tp}, `FN: {self.fn})")
+
+    def _decode_json(self, raw: bytes):
+        s = raw.decode('utf-8')
+        packet = json.loads(s)
+        return packet     
+    
+    def _decode_flatbuffer(self, raw: bytes):
+        """Decode a FlatBuffers TelemetryBatch from raw bytes by dynamically finding the vector field."""
+        try:
+            from .anomaler.Serialization import TelemetryBatch as tb
+            batch = tb.TelemetryBatch.GetRootAs(raw, 0)
+            
+            # FlatBuffers names methods cleanly (e.g., DatapointsLength / Datapoints)
+            methods = dir(batch)
+            vector_base = None
+            for kw in ["Messages", "Datapoints", "Samples", "Frames", "Data"]:
+                if f"{kw}Length" in methods:
+                    vector_base = kw
+                    break
+            
+            if not vector_base:
+                # Fallback to looking for anything ending in Length to prevent failure
+                length_methods = [m for m in methods if m.endswith("Length")]
+                if length_methods:
+                    vector_base = length_methods[0].replace("Length", "")
+            
+            if not vector_base:
+                return None
+            
+            # Extract bound accessors dynamically based on your compiled .fbs file
+            length_func = getattr(batch, f"{vector_base}Length")
+            vector_func = getattr(batch, vector_base)
+            
+            datapoints = []
+            num_elements = length_func()
+            
+            # Extract raw floats from binary memory sequentially
+            for i in range(num_elements):
+                msg = vector_func(i)
+                datapoints.append({
+                    "timestamp": datetime.fromtimestamp(msg.Timestamp()).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "value": msg.Value()
+                })
+            
+            if datapoints:
+                return {"datapoints": datapoints}
+        except Exception as e:
+            # Uncomment the next line temporarily if you need to debug schema structural anomalies
+            print(f"[DEBUG CRASH] Flatbuffer unpack failed: {e}")
+            pass
+
+        return None

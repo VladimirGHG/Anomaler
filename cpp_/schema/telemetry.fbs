@@ -1,8 +1,12 @@
 namespace Anomaler.Serialization;
 
 table TelemetryMessage {
-    timestamp:double;
-    value:double;
+    timestamp: double;
+    value: double;
 }
 
-root_type TelemetryMessage;
+table TelemetryBatch {
+    datapoints: [TelemetryMessage];
+}
+
+root_type TelemetryBatch;

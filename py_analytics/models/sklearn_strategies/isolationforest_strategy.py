@@ -74,7 +74,7 @@ class IsolationForestStrategy(AnomalyModel):
             on_each_time = total_pred_time / len(new_values) if new_values else 0
             for i, ((time_, v), pred) in enumerate(zip(new_values.items(), predictions)):
                 # print(f"time_: {time_}\n")
-                comp_time = datetime.strptime(time_, time_format).timestamp()
+                comp_time = float(time_) if isinstance(time_, (int, float)) else datetime.strptime(time_, time_format).timestamp()
                 total_process_time = (pred_start_time - comp_time) + i * on_each_time # Approximate the time taken for the entire process of this value.
                 results.append({"val": v, "is_anomaly": (pred == -1), "anomaly_level": self.anomaly_level(mad, median, v), "processed_in": total_process_time, "status": "READY"})
 
