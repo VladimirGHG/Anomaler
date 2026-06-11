@@ -15,4 +15,5 @@ vcpkg/.vcpkg-root
 vcpkg/vcpkg
 vcpkg/scripts/buildsystems/vcpkg.cmake.log
 logs/*
+Anomaler/
 .DS_Store

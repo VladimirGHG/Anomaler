@@ -8,6 +8,16 @@
 #include "SourceFactory.h"
 #include "DataSender.h"
 
+DataSender::SerializationProtocol parseProtocol(std::string str) {
+            std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+
+            if (str == "FLATBUFFERS") {
+                return DataSender::SerializationProtocol::FLATBUFFERS;
+            }
+            
+            return DataSender::SerializationProtocol::JSON; 
+}
+
 int main(int argc, char** argv) {
     // Main Application
     CLI::App app{"Anomaler: High-Performance Data Producer for ML Pipelines"};
@@ -30,6 +40,7 @@ int main(int argc, char** argv) {
     std::string ml_model;
     std::string readport;
     std::string sensorname;
+    std::string serialization;
 
     // Data Mode: When creating a stream, the user shall specify the data source.
     // Users can create custom sources by implementing the DataSource interface and adding them to the SourceFactory.
@@ -83,6 +94,10 @@ int main(int argc, char** argv) {
     stream_cmd->add_option("-b,--batch", batch_size, "Number of points to send in each batch (0 for all available)")
               ->check(CLI::NonNegativeNumber)
               ->capture_default_str();
+    
+    stream_cmd->add_option("--ser,--serialization", serialization, "Number of points to send in each batch (0 for all available)")
+              ->check(CLI::IsMember({"json", "flatbuffers"}))
+              ->default_val("json");
 
     stream_cmd->add_flag("-v,--verbose", verbose, "Enable detailed logging for the stream command");
 
@@ -109,10 +124,11 @@ int main(int argc, char** argv) {
 
         nlohmann::json registration = {
             {"action", "start"},
-            {"port", port},         // from CLI11 option
-            {"model", source_type}, // from CLI11 option
-            {"mode", data_mode},    // from CLI11 option
-            {"ml_model", ml_model}  // from CLI11 option
+            {"port", port},
+            {"model", source_type},
+            {"mode", data_mode},
+            {"ml_model", ml_model},
+            {"serialization", serialization}
         };
 
         announcer.send(zmq::buffer(registration.dump()), zmq::send_flags::none);
@@ -126,8 +142,9 @@ int main(int argc, char** argv) {
             std::cerr << "[ERROR] Failed to receive acknowledgment from manager. Exiting." << std::endl;
             return 1;
         }
+
         // Now start the actual data stream on the dynamic port
-        DataSender data_sender("tcp://127.0.0.1:" + std::to_string(port));
+        DataSender data_sender("tcp://127.0.0.1:" + std::to_string(port), parseProtocol(serialization));
 
         // Set socket options for reliability and performance, so that no memory leaks occur, when the receiver is offline.
         data_sender.socket.set(zmq::sockopt::sndhwm, 10);
@@ -146,7 +163,7 @@ int main(int argc, char** argv) {
 
             // Send if batch is ready
             if (data_sender.stream.dataPoints.size() >= batch_size) {
-                res = data_sender.send(batch_size, true); // Send the batch and clear after sending
+                res = data_sender.sendBatch(batch_size, true); // Send the batch and clear after sending
                 // data_sender.stream.exportToJsonFile("test.json"); // For debugging purposes, export the batch to a JSON file
                 if (!res) {
                     std::cout << "[ERROR] Failed to send batch. Waiting..." << std::endl;
