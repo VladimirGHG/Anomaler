@@ -33,7 +33,7 @@ To build and run Anomaler, ensure the following dependencies are installed:
 ## Features
 **End-to-end support**: Anomaler supports the end-to-end cycle of developing an anomaly detection model, from data generation and transformation to model training and evaluation.
 
-**Hybrid ML support**: Native integration for online learning models (River's HalfSpaceTrees) and a batch-based learning models (Sklearn's Isolated Forest).
+**Hybrid ML support**: Native integration for online learning models (River's HalfSpaceTrees) and batch-based learning models (Sklearn's Isolated Forest).
 
 **Distributed Architecture**: Decoupled C++ data ingestion and Python analytics via ZeroMQ for high concurrency and scalability.
 
@@ -82,5 +82,14 @@ Anomaler consists of two main parts:
   * *vcpkg* is a package manager for C++ packages. Needed for easy use of the system.
   * *Makefile* is used for easily building the build by running just the make command in the terminal.
     
+## Starting Anomaler
+After having everything set up, you can easily run the clients on the C++ and Python sides using the below-mentioned commands.
 
+### Run the C++ side
+#### A default run: by mentioning only the port, the frequency, the data source, the data transmission mechanism, and other features of the initialized data stream, is set to their default values. (Mention any port besides 5555, since it is used by default for communication manager between C++ and Python)
+    cpp_/builds/main stream --port XXXX
+
+### Run the Python side
+#### There are no configuration specifications on Python's side. Everything needed is sent to Python from C++ by the manager when a data stream is initialized on the C++ side.
+    python -m py_analytics.main
 
