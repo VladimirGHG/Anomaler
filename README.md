@@ -1,14 +1,14 @@
 # Anomaler
 
 ## Overview
-Anomaler is a C++ system for streaming structured data to an anomaly detection model. It supports both training and real-time evaluation, enabling efficient end-to-end anomaly detection across arbitrary data types. The system is designed to be modular, flexible, and compatible with ML pipelines.
+Anomaler is a C++/Python system for streaming structured data to anomaly detection models and catching those anomalies. It supports both training and real-time evaluation, enabling efficient end-to-end anomaly detection across arbitrary data types. The system is designed to be modular, flexible, and compatible with ML pipelines.
 
 ## Prerequisites
 To build and run Anomaler, ensure the following dependencies are installed:
 
 ### System and Build Tools:
 * **C++17/20** Compiler: Modern Clang or GCC.
-* **CMake** (>=3.15) and **Makefile**, for build orchestration.
+* **CMake** (>=3.15) and **Make**, for build orchestration.
 
 ### C++ Dependencies (vcpkg)
 * **ZeroMQ** (cppzmq): For high-throughput, asynchronous data transmission.
@@ -22,14 +22,21 @@ To build and run Anomaler, ensure the following dependencies are installed:
 * Download the required libraries mentioned in *requirements.txt*, using:
     `pip install -r requirements.txt`
 
-### C++
+## Setting Up C++
 * Anomaler uses [vcpkg](https://github.com/microsoft/vcpkg) to manage C++ dependencies. Install by running:
-    `vcpkg install zeromq nlohmann-json cppzmq`
+    `vcpkg\vcpkg install zeromq nlohmann-json cppzmq cserialport cli11`
+  
+For MACOS and Windows, after installing the required libraries, the remaining setup part is a bit different. Please find the steps for both of those mentioned below.
+### MACOS
 * After installing all the needed packages, build the C++ Manager, and run CMake while pointing to your vcpkg toolchain file:\
-  `cd builds`\
-  `cmake .. -DCMAKE_TOOLCHAIN_FILE=[path/to/vcpkg]/scripts/buildsystems/vcpkg.cmake`\
-  `cmake --builds .`
+  `cd cpp_`\
+  `make`
 
+### Windows
+* After installing all the needed packages, build the C++ Manager, and run the pre-written build.bat:\
+  `cd cpp_`\
+  `.\build.bat`\
+  
 ## Features
 **End-to-end support**: Anomaler supports the end-to-end cycle of developing an anomaly detection model, from data generation and transformation to model training and evaluation.
 
