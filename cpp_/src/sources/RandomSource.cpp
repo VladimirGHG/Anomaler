@@ -15,8 +15,8 @@ SensorDataPoint RandomSource::getNextValue() {
     if (anomaly_chance < 1.0) { // 1% chance to generate an anomaly
         lastWasAnomaly = true;
         double anomaly_shift = (anomaly_chance < 0.5) ? -20.0 : 20.0; // Shift value up or down by 20
-        return SensorDataPoint(value + anomaly_shift); // Simulate an anomaly
+        return SensorDataPoint(value + anomaly_shift, true); // Simulate an anomaly
     }
     lastWasAnomaly = false;
-    return SensorDataPoint(value);
+    return SensorDataPoint(value, false);
 }

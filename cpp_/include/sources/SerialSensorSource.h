@@ -3,17 +3,17 @@
 
 #include "DataSource.h"
 #include "DataPoint.h"
-#include <libserialport.h>
+#include <CSerialPort/SerialPort.h>
 
 class SerialSensorSource : public DataSource {
 public:
     SerialSensorSource(const std::string& port_name, const std::string& sensor_type);
     ~SerialSensorSource();
-    
+
     SensorDataPoint getNextValue() override;
 
 private:
-    struct sp_port* port;
+    itas109::CSerialPort port;
     std::string type;
 };
 

@@ -3,6 +3,7 @@
 
 #include <zmq.hpp>
 #include <string>
+#include <functional>
 #include "DataStream.h"
 
 /** @brief A class responsible for sending data streams over a ZeroMQ socket.
