@@ -2,6 +2,7 @@ import time
 from datetime import datetime  
 
 import numpy as np
+from sklearn.model_selection import KFold
 from sklearn.utils import shuffle
 from sklearn.ensemble import IsolationForest
 
@@ -9,20 +10,20 @@ from py_analytics.models.base import AnomalyModel, BatchBufferPolicy
 
 class IsolationForestStrategy(AnomalyModel):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
-    def __init__(self, contamination: float = None, buffer_limit: int = 50, max_buffer_size: int = 200, buffer_policy: BatchBufferPolicy = BatchBufferPolicy.CLEAR_ON_DRIFT, k: float = 3.0):
+    def __init__(self, contamination: float = None, buffer_limit: int = 200, max_buffer_size: int = 400, buffer_policy: BatchBufferPolicy = BatchBufferPolicy.CLEAR_ON_DRIFT, k: float = 3.0):
 
         super().__init__("SKlearnIsolatedForest")
         if contamination:
-            self.model = IsolationForest(contamination=contamination, random_state=42)
+            self.model = IsolationForest(contamination=contamination, random_state=42, max_samples=min(256, buffer_limit))
         else:
-            self.model = IsolationForest(random_state=42)
+            self.model = IsolationForest(random_state=42, max_samples=min(256, buffer_limit))
         self.buffer_limit = buffer_limit # Minimum number of data points to start training, even if we detect drift before reaching this limit. This allows us to have a stable initial model before we start reacting to drift.
         self.max_buffer_size = max_buffer_size # Maximum number of data points to keep in the buffer for training, even if we clear on drift. This allows us to have a sliding window of recent data for training after a drift event.
         self.buffer_policy = buffer_policy # Policy to determine how to manage the buffer when drift is detected. CLEAR_ON_DRIFT will clear the buffer immediately, while KEEP_WINDOW will keep the last max_buffer_size data points as a sliding window for training.
         self.k = k # The number of standard deviations below the mean score to set the anomaly threshold. A higher k will make the model more conservative in flagging anomalies, while a lower k will make it more sensitive.
         self.retrain_needed = False
-        self.score_threshold = None  # Will be set after the first training to determine anomaly threshold based on model's score distribution.
-        self.min_retrain_interval_s = 30  # Minimum time interval in seconds between retraining events to avoid excessive retraining in rapid succession.
+        self.score_threshold = None # Will be set after the first training to determine anomaly threshold based on model's score distribution.
+        self.min_retrain_interval_s = 30 # Minimum time interval in seconds between retraining events to avoid excessive retraining in rapid succession.
         self._last_retrain_time = 0
 
     def process_batch(self, mad, median, new_values) -> list[dict]:
@@ -71,6 +72,14 @@ class IsolationForestStrategy(AnomalyModel):
             return
         
         try:
+            kf = KFold(n_splits=5, shuffle=True, random_state=42)
+            oof_scores = np.zeros(len(X))
+
+            for train_idx, test_idx in kf.split(X):
+                fold_model = IsolationForest(random_state=42)
+                fold_model.fit(X[train_idx])
+                oof_scores[test_idx] = fold_model.score_samples(X[test_idx])
+
             self.model.fit(shuffle(X, random_state=42))
             self.is_fitted = True
         except Exception:
@@ -81,6 +90,10 @@ class IsolationForestStrategy(AnomalyModel):
         score_median = np.median(train_scores)
         score_mad = np.median(np.abs(train_scores - score_median))
         self.score_threshold = score_median - self.k * 1.4826 * score_mad
+        self.logger.warning(
+            f"[SCORE DIAG] min={oof_scores.min():.4f} p1={np.percentile(oof_scores,1):.4f} "
+            f"median={score_median:.4f} mad={score_mad:.4f} threshold={self.score_threshold:.4f} max={oof_scores.max():.4f}"
+        )
 
     def _generate_results(self, mad, median, new_values) -> list[dict]:
         """Generates results for the current batch of new values based on the model's predictions."""
@@ -108,6 +121,7 @@ class IsolationForestStrategy(AnomalyModel):
                     comp_time = pred_start_time
 
                 total_process_time = (pred_start_time - comp_time) + i * on_each_time # Approximate the time taken for the entire process of this value.
+                print(f"[PREDICTION] Value: {v}, Score: {score:.4f}, Processed in: {total_process_time:.4f}s")
                 is_anomaly = score < self.score_threshold
                 results.append({
                     "val": v,
