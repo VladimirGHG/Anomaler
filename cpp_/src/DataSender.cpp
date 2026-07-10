@@ -5,6 +5,9 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <functional>
+#include <thread>
+#include <cstring>
+#include <cstdlib>
 
 DataSender::DataSender(const std::string& endpoint, SerializationProtocol protocol)
     : context(1), stream(), socket(context, zmq::socket_type::push), serialization_protocol(protocol) {
@@ -44,7 +47,23 @@ int DataSender::sendJson(int batch_size, bool clear_after_send) {
             stream.clear(batch_size);
         }
         return 1;
-    }
+    } 
+    // else {
+    //     std::cerr << "[ZMQ] Failed to send message. Retrying..." << std::endl;
+    //     for (int attempt = 1; attempt <= 3; ++attempt) {
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(100 * attempt));
+    //         result = socket.send(message, zmq::send_flags::none);
+    //         if (result) {
+    //             std::cout << "[ZMQ] Sent " << payload.size() << " bytes on retry attempt " << attempt << "." << std::endl;
+    //             if (clear_after_send) {
+    //                 stream.clear(batch_size);
+    //             } break;
+    //         }   
+    //     }
+    //     std::cerr << "[ZMQ] Failed to send message after 3 attempts." << std::endl;
+    //     std::exit(EXIT_FAILURE); // Terminate the process if sending fails after retries
+    // }
+    std::cerr << "[ZMQ] Failed to send message." << std::endl;
     return 0;
 }
 
