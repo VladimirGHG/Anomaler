@@ -149,7 +149,16 @@ class ZMQWorker:
     def _decode_json(self, raw: bytes):
         s = raw.decode('utf-8')
         packet = json.loads(s)
-        return packet     
+
+        # In case of leading zeroes being stripped.
+        datapoints = packet.get("datapoints", [])
+        print(datapoints)
+        for datapoint in datapoints:
+            timestamp = datapoint.get("timestamp", [])
+            base, frac = timestamp.rsplit('.', 1)
+            frac = frac.zfill(3)[:3]
+            datapoint["timestamp"] = datetime.strptime(f"{base}.{frac}", "%Y-%m-%d %H:%M:%S.%f")
+        return packet
     
     def _decode_flatbuffer(self, raw: bytes):
         """Decode a FlatBuffers TelemetryBatch from raw bytes by dynamically finding the vector field."""

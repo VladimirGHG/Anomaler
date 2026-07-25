@@ -115,7 +115,12 @@ class IsolationForestStrategy(AnomalyModel):
 
             for i, ((time_, v), score) in enumerate(zip(new_values.items(), scores)):
                 try:
-                    comp_time = float(time_) if isinstance(time_, (int, float)) else datetime.strptime(time_, time_format).timestamp()
+                    if isinstance(time_, (int, float)):
+                        comp_time = float(time_)
+                    elif isinstance(time_, datetime):
+                        comp_time = time_.timestamp()
+                    else:
+                        comp_time = datetime.strptime(time_, time_format).timestamp()
                 except (ValueError, TypeError):
                     self.logger.warning(f"\n[ERROR] Malformed timestamp: {time_!r}, using current time")
                     comp_time = pred_start_time
