@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
               ->default_val("json");
 
     stream_cmd->add_flag("-v,--verbose", verbose, "Enable detailed logging for the stream command");
-
+    
     // The Parsing "Handshake"
     try {
         app.parse(argc, argv);
@@ -162,7 +162,9 @@ int main(int argc, char** argv) {
             // bool isAnomaly = source->wasAnomaly();
             // Create a stable point and add it to the stream
             data_sender.stream.addDataPoint(dp);
-            std::cout << "[INFO] Added Data Point: " << dp.getValue() << " at " << dp.getTimestamp() << std::endl;
+            if (verbose) {
+                std::cout << "[INFO] Added Data Point: " << dp.getValue() << " at " << dp.getTimestamp() << std::endl;
+            }
 
             if (data_sender.stream.dataPoints.size() >= batch_size) {
                 bool sendOk = data_sender.sendBatch(batch_size, true);
