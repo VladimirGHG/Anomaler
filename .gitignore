@@ -17,3 +17,6 @@ vcpkg/scripts/buildsystems/vcpkg.cmake.log
 logs/*
 Anomaler/
 .DS_Store
+.venv/
+py_analytics/models_saved/
+__pycache__/

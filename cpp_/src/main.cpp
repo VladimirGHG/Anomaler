@@ -131,50 +131,57 @@ int main(int argc, char** argv) {
             {"serialization", serialization}
         };
 
+        announcer.set(zmq::sockopt::linger, 0);
+        announcer.set(zmq::sockopt::sndtimeo, 60'000);
+        announcer.set(zmq::sockopt::rcvtimeo, 60'000);
         announcer.send(zmq::buffer(registration.dump()), zmq::send_flags::none);
 
         // Wait for Python to reply with acknowledgment before starting the stream
         zmq::message_t reply;
-        auto res = announcer.recv(reply, zmq::recv_flags::none); 
+        auto handshake_res = announcer.recv(reply, zmq::recv_flags::none); 
 
         // If we don't get a reply, it means the manager is not running or there's a connection issue
-        if (!res) {
+        if (!handshake_res) {
             std::cerr << "[ERROR] Failed to receive acknowledgment from manager. Exiting." << std::endl;
             return 1;
         }
 
-        // Now start the actual data stream on the dynamic port
         DataSender data_sender("tcp://127.0.0.1:" + std::to_string(port), parseProtocol(serialization));
 
-        // Set socket options for reliability and performance, so that no memory leaks occur, when the receiver is offline.
+        data_sender.socket.set(zmq::sockopt::sndtimeo, 10'000);
         data_sender.socket.set(zmq::sockopt::sndhwm, 10);
-        data_sender.socket.set(zmq::sockopt::immediate, 0);
+        data_sender.socket.set(zmq::sockopt::immediate, 1);
         data_sender.socket.set(zmq::sockopt::linger, 0);
 
-        // Initialize the data source from which data points will be generated
         auto source = SourceFactory::create(source_type, data_mode, readport, sensorname);
 
-        std::cout << "[INFO] Starting data stream..." << std::endl;
-        while(true){
+        std::cout << "[INFO] Data Stream Started. Press Ctrl+C to stop." << std::endl;
+        bool shuttingDown = false;
+        while(!shuttingDown){
             SensorDataPoint dp = source->getNextValue(); 
             // bool isAnomaly = source->wasAnomaly();
             // Create a stable point and add it to the stream
             data_sender.stream.addDataPoint(dp);
+            std::cout << "[INFO] Added Data Point: " << dp.getValue() << " at " << dp.getTimestamp() << std::endl;
 
-            // Send if batch is ready
             if (data_sender.stream.dataPoints.size() >= batch_size) {
-                res = data_sender.sendBatch(batch_size, true); // Send the batch and clear after sending
+                bool sendOk = data_sender.sendBatch(batch_size, true);
+                
                 // data_sender.stream.exportToJsonFile("test.json"); // For debugging purposes, export the batch to a JSON file
-                if (!res) {
+                if (!sendOk) {
                     std::cout << "[ERROR] Failed to send batch. Waiting..." << std::endl;
+
+                    data_sender.stream.exportToJsonFile("unsent_backup_" + std::to_string(std::time(nullptr)) + ".json");
+                    shuttingDown = true;
+                    continue;
                 }
-                data_sender.stream.clear(); // Clear the stream after sending to avoid memory issues
+
+                std::cout << "[INFO] Sent Batch of " << batch_size << " points." << std::endl;
             }
 
             std::this_thread::sleep_for(std::chrono::duration<double>(frequency));
         }
         
-        std::cout << ">>> Data Stream Started. Press Ctrl+C to stop." << std::endl;
     } else {
         std::cout << app.help() << std::endl;
     }

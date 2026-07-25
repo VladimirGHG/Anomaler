@@ -4,48 +4,55 @@
 #include <thread>
 #include <chrono>
 
-SerialSensorSource::SerialSensorSource(const std::string& port_name, const std::string& sensor_name) {
-    if (sp_get_port_by_name(port_name.c_str(), &port) != SP_OK) {
-        throw std::runtime_error("Could not find serial port: " + port_name);
-    }
+SerialSensorSource::SerialSensorSource(const std::string& port_name, const std::string& sensor_name)
+    : type(sensor_name)
+{
+    port.init(port_name.c_str(),
+              9600,
+              itas109::ParityNone,
+              itas109::DataBits8,
+              itas109::StopOne,
+              itas109::FlowNone);
 
-    if (sp_open(port, SP_MODE_READ) != SP_OK) {
+    port.setOperateMode(itas109::SynchronousOperate); // poll instead of event-driven
+
+    if (!port.open()) {
         throw std::runtime_error("Could not open serial port: " + port_name);
     }
 
-    sp_set_baudrate(port, 9600);
-    sp_set_bits(port, 8);
-    sp_set_parity(port, SP_PARITY_NONE);
-    sp_set_stopbits(port, 1);
-    
     std::cout << "Connected to sensor: " << sensor_name << " on " << port_name << std::endl;
 
-    sp_flush(port, SP_BUF_BOTH); 
-    
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 }
 
 SerialSensorSource::~SerialSensorSource() {
-    if (port) {
-        sp_close(port);
-        sp_free_port(port);
+    if (port.isOpen()) {
+        port.close();
     }
-
-    sp_flush(port, SP_BUF_BOTH); 
-    
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 }
 
 SensorDataPoint SerialSensorSource::getNextValue() {
     char buffer[512];
-    int bytes = sp_blocking_read_next(port, buffer, 511, 2000); 
-    
+    int bytes = 0;
+
+    const int timeout_ms = 2000;
+    const int poll_interval_ms = 50;
+    int waited = 0;
+
+    while (waited < timeout_ms) {
+        bytes = port.readData(buffer, 511);
+        if (bytes > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms));
+        waited += poll_interval_ms;
+    }
+
     if (bytes > 0) {
         buffer[bytes] = '\0';
         std::string raw(buffer);
         std::smatch match;
         std::regex val_regex("[-+]?[0-9]*\\.?[0-9]+");
-        
+
         if (std::regex_search(raw, match, val_regex)) {
             return SensorDataPoint(std::stod(match.str()));
         }

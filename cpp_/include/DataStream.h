@@ -14,10 +14,11 @@
 */
 class DataStream {
 public:
+    DataStream() : next_batch_id(0) {}
     void addDataPoint(const SensorDataPoint& dataPoint);
 
     SensorDataPoint getDataPoint();
-
+    uint64_t next_batch_id;
     void clear(int toRemove = -1);
 
     std::string toJson(bool pretty=false, long long limit=-1) const;

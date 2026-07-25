@@ -35,6 +35,7 @@ std::string DataStream::toJson(bool pretty, long long limit) const {
     size_t total = dataPoints.size();
     
     size_t count = (limit > 0 && (size_t)limit < total) ? (size_t)limit : total;
+    j["ID"] = next_batch_id;
     j["count"] = count;
     j["datapoints"] = nlohmann::json::array();
 
@@ -50,7 +51,9 @@ std::string DataStream::toJson(bool pretty, long long limit) const {
         
         j["datapoints"].push_back(point);
     }
-
+    // toJson is a const method; update the member via const_cast to avoid
+    // "expression must be a modifiable lvalue" while preserving logical behavior
+    const_cast<DataStream*>(this)->next_batch_id++;
     return pretty ? j.dump(4) : j.dump();
 }
 

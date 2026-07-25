@@ -21,10 +21,13 @@ class ZMQWorker:
         self.context = zmq.Context()
         self.receiver = self.context.socket(zmq.PULL)
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
+        self.batch_id = 0
+
         self.median = 0
         self.mad = 1 # MAD / Median Absolute Deviation
         self.tp = 0 # True Positives
         self.fn = 0 # False Negatives
+        
         self.load_path = load_path
         self.save_every = save_every
         self.max_snapshots = max_snapshots
@@ -61,7 +64,13 @@ class ZMQWorker:
                     except zmq.Again:
                         break # Queue is empty
                 
-                # Flatten all data points from all packets received
+                if self.batch_id == packet["ID"]:
+                    print(f"--- [INFO] Batch with ID {packet['ID']} received.")
+                    self.batch_id += 1
+                else:
+                    print(f"--- [INFO] Batch with ID {packet['ID']} received. Expected ID: {self.batch_id}.")
+                    continue # Skip processing if the batch ID does not match the expected ID
+
                 all_new_values = {}
                 for packet in batch_of_packets:
                     all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
@@ -71,12 +80,12 @@ class ZMQWorker:
                         # Calculate the current median and MAD
                         self.get_median_mad(self.strategy.data_buffer)
                 
-                # Process everything in one go
                 results = []
 
                 # If a model loading path was provided when the worker was created, than load the model.
                 if self.load_path:
                     self.strategy.model = self.strategy.load_model(self.load_path)
+                    
                 # If there are newly received data points process them and report the results.
                 if all_new_values:
                     results = self.strategy.process_batch(self.mad, self.median, all_new_values)
@@ -127,7 +136,7 @@ class ZMQWorker:
         if status == "WARMUP":
             return
         for r, dp in zip(results, data_points[0].get("datapoints")):
-            # print(r, dp)
+            print(r, dp)
             if r.get("is_anomaly") and dp.get("shouldbeAnomaly"):
                 print(f"True Positive: Detected {r['val']} as anomaly, which is correct.")
                 self.tp += 1
@@ -140,7 +149,16 @@ class ZMQWorker:
     def _decode_json(self, raw: bytes):
         s = raw.decode('utf-8')
         packet = json.loads(s)
-        return packet     
+
+        # In case of leading zeroes being stripped.
+        datapoints = packet.get("datapoints", [])
+        print(datapoints)
+        for datapoint in datapoints:
+            timestamp = datapoint.get("timestamp", [])
+            base, frac = timestamp.rsplit('.', 1)
+            frac = frac.zfill(3)[:3]
+            datapoint["timestamp"] = datetime.strptime(f"{base}.{frac}", "%Y-%m-%d %H:%M:%S.%f")
+        return packet
     
     def _decode_flatbuffer(self, raw: bytes):
         """Decode a FlatBuffers TelemetryBatch from raw bytes by dynamically finding the vector field."""
