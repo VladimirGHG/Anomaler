@@ -21,6 +21,7 @@ def run_model_worker_process(
     ):
     """Entry point for the multiprocessing.Process"""
 
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     # Check if their is a saved model
     folder = "./py_analytics/models"
     if Amodel == "RiverHalfSpaceTrees":
@@ -36,6 +37,7 @@ def run_model_worker_process(
             raise NameError("--- [ERROR] Please provide a valid path to load an Amodel model")
     else:
         raise NameError("--- [ERROR] Please provide a valid Amodel name")
+
     worker = ZMQWorker(port, strategy, serialization)
     worker.start()
 
@@ -59,14 +61,13 @@ def shutdown_handler(sig: int, frame):
     print("--- [SYSTEM] All processes cleared. Exit.")
     sys.exit(0)
 
-signal.signal(signal.SIGINT, shutdown_handler)
-
 def start_manager(port: int = 5555):
     context = zmq.Context()
 
     try:
         discovery = context.socket(zmq.REP)
         discovery.setsockopt(zmq.LINGER, 0)
+        discovery.setsockopt(zmq.RCVTIMEO, 1000)
         discovery.bind(f"tcp://127.0.0.1:{port}")
     except zmq.ZMQError as e:
         print(f"--- [ERROR] Failed to bind discovery socket on port {port}: {e}")
@@ -79,6 +80,8 @@ def start_manager(port: int = 5555):
         try:
             try:
                 msg = discovery.recv_json()
+            except zmq.Again:
+                continue
             except (zmq.ZMQError, ValueError, json.JSONDecodeError) as recv_err:
                 print(f"--- [ERROR] Failed to receive or decode message: {recv_err}")
                 try:

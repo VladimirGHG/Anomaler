@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include "SourceFactory.h"
 #include "DataSender.h"
+#include "SourceGroup.h"
 
 DataSender::SerializationProtocol parseProtocol(std::string str) {
             std::transform(str.begin(), str.end(), str.begin(), ::toupper);
@@ -101,6 +102,7 @@ int main(int argc, char** argv) {
 
     stream_cmd->add_flag("-v,--verbose", verbose, "Enable detailed logging for the stream command");
     
+    auto* group_cmd = app.add_subcommand("group", "Launch a predefined group of stream sources");
     // The Parsing "Handshake"
     try {
         app.parse(argc, argv);
@@ -183,8 +185,21 @@ int main(int argc, char** argv) {
 
             std::this_thread::sleep_for(std::chrono::duration<double>(frequency));
         }
+    
+    }else if (app.got_subcommand(group_cmd)) {
+        std::cout << "[INFO] Launching Source Group..." << std::endl;
         
-    } else {
+        std::unordered_map<std::array<std::string, 2>, std::pair<int, double>, ArrayStringHash> group = {
+            {{"random", "source1"}, {5554, 0.05}},
+            {{"outlier", "source2"}, {5556, 0.05}},
+            {{"outlier", "source3"}, {5557, 0.1}}
+        };
+
+        SourceGroup sourceGroup(group);
+        sourceGroup.launch();
+    } 
+    
+    else {
         std::cout << app.help() << std::endl;
     }
 

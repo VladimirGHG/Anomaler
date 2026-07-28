@@ -23,6 +23,7 @@ cl /std:c++17 /EHsc /MD /DCLI11_PRECOMPILED %INC% /Fo:builds\ ^
     src/DataStream.cpp ^
     src/DataSender.cpp ^
     src/SourceFactory.cpp ^
+    src/SourceGroup.cpp ^
     src/sources/RandomSource.cpp ^
     src/sources/OutlierSource.cpp ^
     src/sources/DriftDecorator.cpp ^
