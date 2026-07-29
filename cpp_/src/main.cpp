@@ -159,10 +159,12 @@ int main(int argc, char** argv) {
 
         std::cout << "[INFO] Data Stream Started. Press Ctrl+C to stop." << std::endl;
         bool shuttingDown = false;
+
+        const auto stream_start = std::chrono::steady_clock::now();
+        long long tick_count = 0;
+
         while(!shuttingDown){
             SensorDataPoint dp = source->getNextValue(); 
-            // bool isAnomaly = source->wasAnomaly();
-            // Create a stable point and add it to the stream
             data_sender.stream.addDataPoint(dp);
             if (verbose) {
                 std::cout << "[INFO] Added Data Point: " << dp.getValue() << " at " << dp.getTimestamp() << std::endl;
@@ -170,20 +172,21 @@ int main(int argc, char** argv) {
 
             if (data_sender.stream.dataPoints.size() >= batch_size) {
                 bool sendOk = data_sender.sendBatch(batch_size, true);
-                
-                // data_sender.stream.exportToJsonFile("test.json"); // For debugging purposes, export the batch to a JSON file
                 if (!sendOk) {
                     std::cout << "[ERROR] Failed to send batch. Waiting..." << std::endl;
-
-                    data_sender.stream.exportToJsonFile("unsent_backup_" + std::to_string(std::time(nullptr)) + ".json");
+                    data_sender.stream.exportToJsonFile("./unseen_data/unsent_backup_" + std::to_string(std::time(nullptr)) + ".json");
                     shuttingDown = true;
+                    tick_count = 0;
                     continue;
                 }
-
                 std::cout << "[INFO] Sent Batch of " << batch_size << " points." << std::endl;
             }
 
-            std::this_thread::sleep_for(std::chrono::duration<double>(frequency));
+            tick_count++;
+            auto next_deadline = stream_start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(frequency * tick_count)
+            );
+            std::this_thread::sleep_until(next_deadline);
         }
     
     }else if (app.got_subcommand(group_cmd)) {
