@@ -3,16 +3,12 @@
 
 #include <array>
 #include <string>
+#include <variant>
 #include <unordered_map>
 #include <windows.h>
 
-struct ArrayStringHash {
-    std::size_t operator()(const std::array<std::string, 2>& a) const noexcept {
-        std::size_t h1 = std::hash<std::string>{}(a[0]);
-        std::size_t h2 = std::hash<std::string>{}(a[1]);
-        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2)); // boost-style combine
-    }
-};
+using FieldValue = std::variant<int, double, std::string, bool>;
+using FieldMap = std::unordered_map<std::string, FieldValue>;
 
 /** @brief A class representing a group of data sources.
  * Each source group consists of a name and a list of source types.
@@ -22,26 +18,19 @@ struct ArrayStringHash {
 class SourceGroup{
 public:
 
-    // Construct a SourceGroup from a list of source type names and frequencies <name: [port, frequency]>.
-    SourceGroup(std::unordered_map<std::array<std::string, 2>, std::pair<int, double>, ArrayStringHash> group): group_(group) {}
+    // Construct a SourceGroup from a list of source type names and frequencies {source_name: {{source_type:}, {readport:}, {port:}, {frequency:}, {ml_model:}, {data_mode:}, {serialization:}, {batch_size:}, {verbose:}}.
+    SourceGroup(std::unordered_map<std::string, FieldMap> group): group_(std::move(group)) {}
 
     // Default constructor
     SourceGroup() = default;
 
-    // Add a source name to the group with a specified frequency, or update the frequency if the source type already exists.
-    void insertUpdate(const std::string& source_type, const std::string& source_name, double frequency = -1.0, int port = -1) {
-        if (frequency != -1.0 && port != -1) {
-            group_[{source_type, source_name}] = {port, frequency};
-        } else if (frequency != -1.0) {
-            group_[{source_type, source_name}].second = frequency;
-        } else if (port != -1) {
-            group_[{source_type, source_name}].first = port;
-        }
-    }
+    template<typename... Args>
+    // Add a source name to the group with a specified arguments, or update the arguments if the source type already exists.
+    void insertUpdate(const std::string& source_name, Args&&... args);
 
     // Remove a source name from the group.
-    void remove(const std::string& source_type, const std::string& source_name) {
-        group_.erase({source_type, source_name});
+    void remove(const std::string& source_name) {
+        group_.erase(source_name);
     }
 
     // Launch the work of all sources in the group.
@@ -50,7 +39,17 @@ public:
     void terminateAll();
 
 private:
-    std::unordered_map<std::array<std::string, 2>, std::pair<int, double>, ArrayStringHash> group_;
+    // Base case: no more key/value pairs left.
+    void setFields(FieldMap&) {}
+
+    // Peel off one (key, value) pair at a time and recurse on the rest.
+    template<typename Value, typename... Rest>
+    void setFields(FieldMap& entry, const std::string& key, Value&& value, Rest&&... rest) {
+        entry[key] = std::forward<Value>(value);
+        setFields(entry, std::forward<Rest>(rest)...);
+    }
+    
+    std::unordered_map<std::string, FieldMap> group_;
     std::vector<PROCESS_INFORMATION> processes_;
 };
 

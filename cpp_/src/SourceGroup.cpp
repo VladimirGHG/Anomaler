@@ -1,44 +1,101 @@
 #include "SourceGroup.h"
 #include <iostream>
+#include <sstream>
+
+namespace {
+
+const std::unordered_map<std::string, std::string> kFieldToFlag = {
+    {"port", "-p"},
+    {"verbose", "-v"},
+    {"frequency", "-f"},
+    {"batch_size", "-b"},
+    {"ml_model", "--ml"},
+    {"readport", "--rp"},
+    {"source_type", "-s"},
+    {"data_mode", "--dm"},
+    {"sensorname", "--sn"},
+    {"serialization", "--ser"},
+};
+
+std::string valueToString(const FieldValue& value) {
+    return std::visit([](auto&& v) -> std::string {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, bool>) {
+            return v ? "true" : "false";
+        } else if constexpr (std::is_same_v<T, std::string>) {
+            return v;
+        } else {
+            return std::to_string(v);
+        }
+    }, value);
+}
+
+}
+
+template<typename... Args>
+void SourceGroup::insertUpdate(const std::string& source_name, Args&&... args) {
+    static_assert(sizeof...(Args) % 2 == 0, "Fields must be passed as key-value pairs");
+
+    FieldMap& entry = group_[source_name];
+    setFields(entry, std::forward<Args>(args)...);
+}
+
 
 void SourceGroup::launch() {
-    for (const auto& [source_type_name, port_frequency_array] : group_) {
-        const std::string& source_type = source_type_name[0];
-        const std::string& source_name = source_type_name[1];
-        int port = port_frequency_array.first;
-        double frequency = port_frequency_array.second;
+    for (const auto& [source_name, attributes] : group_) {
 
-        std::string command = ".\\builds\\main stream -p " + std::to_string(port) +
-                               " -f " + std::to_string(frequency) +
-                               " -s " + source_type;
+        // source_type is always required, since it determines what the source needs.
+        auto typeIt = attributes.find("source_type");
+        if (typeIt == attributes.end()) {
+            std::cerr << "[ERROR] Source '" << source_name << "' has no source_type set, skipping.\n";
+            continue;
+        }
+
+        std::ostringstream command;
+        command << ".\\builds\\main stream";
+
+        // Compose the command from whatever fields are actually present.
+        for (const auto& [field, flag] : kFieldToFlag) {
+            if (field == "verbose") continue;
+            auto it = attributes.find(field);
+            if (it == attributes.end()) continue;
+            command << " " << flag << " " << valueToString(it->second);
+        }
+        
+        if (auto vIt = attributes.find("verbose"); vIt != attributes.end()) {
+            if (const bool* b = std::get_if<bool>(&vIt->second); b && *b) {
+                command << " -v";
+            }
+        }
+
+        std::string cmdStr = command.str();
 
         STARTUPINFOA si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
 
-        std::vector<char> cmdBuf(command.begin(), command.end());
+        std::vector<char> cmdBuf(cmdStr.begin(), cmdStr.end());
         cmdBuf.push_back('\0');
-
+        
         BOOL ok = CreateProcessA(
-            nullptr, // application name (use nullptr, pass exe in cmdline)
-            cmdBuf.data(), // mutable command line
-            nullptr, nullptr, // process/thread security attrs
-            FALSE, // inherit handles
-            CREATE_NEW_CONSOLE, // give each source its own console window
-            nullptr, // environment
-            nullptr, // current directory
+            nullptr,
+            cmdBuf.data(),
+            nullptr, nullptr,
+            FALSE,
+            CREATE_NEW_CONSOLE,
+            nullptr,
+            nullptr,
             &si, &pi
         );
 
         if (!ok) {
             std::cerr << "[ERROR] Failed to launch source: " << source_name
-                       << " (error " << GetLastError() << ") with command: "
-                       << command << std::endl;
+                        << " (error " << GetLastError() << ") with command: "
+                        << cmdStr << std::endl;
             continue;
         }
 
-        std::cout << "[INFO] Launched source '" << source_name
-                   << "' as PID " << pi.dwProcessId << std::endl;
+        std::cout << "[INFO] Launched source '" << source_name << "' as PID " << pi.dwProcessId << std::endl;
 
         processes_.push_back(pi);
         CloseHandle(pi.hThread);

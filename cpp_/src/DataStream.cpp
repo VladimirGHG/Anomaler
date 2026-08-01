@@ -109,13 +109,6 @@ std::vector<uint8_t> DataStream::toFlatBuffers(long long limit) const {
             extracted_timestamp = 0.0;
         }
 
-        // // Safe conversion for timestamps stored as string formats
-        // try {
-        //     extracted_timestamp = std::stod(dp.getTimestamp());
-        // } catch (...) {
-        //     extracted_timestamp = 0.0;
-        // }
-
         // Directly construct the child table inside the builder's scratchpad memory
         auto message_offset = Anomaler::Serialization::CreateTelemetryMessage(
             builder, 

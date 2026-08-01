@@ -1,7 +1,9 @@
 .vscode/*
+configs/*
 cpp_/builds/*
 cpp_/include/telemetry_generated.h
 !cpp_/builds/.gitkeep
+cpp_/unseen_data/
 py_analytics/.venv
 py_analytics/Anomaler/*
 py_analytics/models_saved/*
