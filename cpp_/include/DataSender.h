@@ -21,7 +21,6 @@ public:
 
     SerializationProtocol serialization_protocol;
 
-    std::function<int(int, bool)> executor; // Function pointer to the appropriate send method based on serialization protocol
     int sendBatch(int batch_size, bool clear_after_send = true); // Unified method to send batches without conditional branches
     DataSender(const std::string& endpoint, SerializationProtocol protocol);
     int sendJson(int batch_size=1, bool clear_after_send=true);

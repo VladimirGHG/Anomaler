@@ -136,7 +136,6 @@ class ZMQWorker:
         if status == "WARMUP":
             return
         for r, dp in zip(results, data_points[0].get("datapoints")):
-            print(r, dp)
             if r.get("is_anomaly") and dp.get("shouldbeAnomaly"):
                 print(f"True Positive: Detected {r['val']} as anomaly, which is correct.")
                 self.tp += 1
@@ -152,7 +151,6 @@ class ZMQWorker:
 
         # In case of leading zeroes being stripped.
         datapoints = packet.get("datapoints", [])
-        print(datapoints)
         for datapoint in datapoints:
             timestamp = datapoint.get("timestamp", [])
             base, frac = timestamp.rsplit('.', 1)
