@@ -8,13 +8,13 @@ SerialSensorSource::SerialSensorSource(const std::string& port_name, const std::
     : type(sensor_name)
 {
     port.init(port_name.c_str(),
-              9600,
-              itas109::ParityNone,
-              itas109::DataBits8,
-              itas109::StopOne,
-              itas109::FlowNone);
+            9600,
+            itas109::ParityNone,
+            itas109::DataBits8,
+            itas109::StopOne,
+            itas109::FlowNone);
 
-    port.setOperateMode(itas109::SynchronousOperate); // poll instead of event-driven
+    port.setOperateMode(itas109::SynchronousOperate);
 
     if (!port.open()) {
         throw std::runtime_error("Could not open serial port: " + port_name);

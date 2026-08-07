@@ -8,7 +8,7 @@ BREW_INC = -I/opt/homebrew/include
 BREW_LIB = -L/opt/homebrew/lib
 
 INC = -I./include -I$(VCPKG_INC) $(BREW_INC)
-LIB = -L$(VCPKG_LIB) $(BREW_LIB) -lzmq -lCLI11 -lserialport
+LIB = -L$(VCPKG_LIB) $(BREW_LIB) -lzmq -lCLI11 -lserialport -lShell32 -lyaml-cpp
 
 CXXFLAGS = -std=c++17 $(INC) -Wall
 
@@ -20,11 +20,16 @@ SRC = src/main.cpp \
       src/DataStream.cpp \
       src/DataSender.cpp \
       src/SourceFactory.cpp \
+      src/SourceGroup.cpp \
       src/sources/RandomSource.cpp \
       src/sources/OutlierSource.cpp \
       src/sources/DriftDecorator.cpp \
-      src/sources/SerialSensorSource.cpp
-	  
+      src/sources/SerialSensorSource.cpp \
+      src/cli/StreamCommand.cpp \
+      src/streaming/GroupCommand.cpp \
+      src/streaming/PollingLoop.cpp \
+      src/streaming/DataSenderFactory.cpp \
+      src/streaming/ManagerHandshake.cpp
 TARGET = builds/main
 
 all: $(GEN_HEADER)
