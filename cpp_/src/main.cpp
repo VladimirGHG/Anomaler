@@ -5,6 +5,7 @@
 #include "StreamOptions.h"
 #include "StreamCommand.h"
 #include "GroupCommand.h"
+#include "GroupOptions.h"
 
 int main(int argc, char** argv) {
     CLI::App app{"Anomaler: High-Performance Data Producer for ML Pipelines"};
@@ -13,8 +14,9 @@ int main(int argc, char** argv) {
     app.add_flag("-v,--verbose", verbose, "Enable detailed console logging");
 
     StreamOptions stream_opts;
+    GroupOptions group_opts;
     auto* stream_cmd = setup_stream_command(app, stream_opts);
-    auto* group_cmd = setup_group_command(app);
+    auto* group_cmd = setup_group_command(app, group_opts);
 
     try {
         app.parse(argc, argv);
@@ -28,7 +30,7 @@ int main(int argc, char** argv) {
     }
 
     if (app.got_subcommand(group_cmd)) {
-        return run_group();
+        return run_group(group_opts);
     }
 
     std::cout << app.help() << std::endl;

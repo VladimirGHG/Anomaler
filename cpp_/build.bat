@@ -33,7 +33,7 @@ cl /std:c++17 /EHsc /MD /DCLI11_PRECOMPILED %INC% /Fo:builds\ ^
     src/streaming/PollingLoop.cpp ^
     src/streaming/DataSenderFactory.cpp ^
     src/streaming/ManagerHandshake.cpp ^
-    /link %LIB_PATH% libzmq-mt-4_3_5.lib libcserialport.lib CLI11.lib Shell32.lib /OUT:builds/main.exe
+    /link %LIB_PATH% libzmq-mt-4_3_5.lib libcserialport.lib CLI11.lib Shell32.lib yaml-cpp.lib /OUT:builds/main.exe
 if errorlevel 1 (
     echo Build failed!
     exit /b 1
