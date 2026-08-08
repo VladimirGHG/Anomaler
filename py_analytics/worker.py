@@ -15,7 +15,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models_saved")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, port, strategy: AnomalyModel, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
+    def __init__(self, port, strategy: AnomalyModel | None, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
         self.port = port
         self.strategy = strategy
         self.context = zmq.Context()
@@ -75,38 +75,42 @@ class ZMQWorker:
                 for packet in batch_of_packets:
                     all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
 
-                if self.strategy.name == "SKlearnIsolatedForest":
-                    if all_new_values:
-                        # Calculate the current median and MAD
-                        self.get_median_mad(self.strategy.data_buffer)
-                
-                results = []
-
-                # If a model loading path was provided when the worker was created, than load the model.
-                if self.load_path:
-                    self.strategy.model = self.strategy.load_model(self.load_path)
+                if self.strategy == None:
+                    print(f"--- [INFO] No strategy provided. Sending the batch {packet['ID']} to the virtual sensor.")
+                    continue
+                else:
+                    if self.strategy.name == "SKlearnIsolatedForest":
+                        if all_new_values:
+                            # Calculate the current median and MAD
+                            self.get_median_mad(self.strategy.data_buffer)
                     
-                # If there are newly received data points process them and report the results.
-                if all_new_values:
-                    results = self.strategy.process_batch(self.mad, self.median, all_new_values)
-                    self.report(results)
+                    results = []
 
-                # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
-                # Elif last snapshot was made more than SELF.SAVE_EVERY seconds ago, save it.
-                if self.strategy.last_save_time is None:
-                    self.strategy.last_save_time = time.time()
-                elif time.time() - self.strategy.last_save_time > self.save_every: # Save every X seconds 
-                    if self.strategy.model_snapshot >= self.max_snapshots: # Keep only last Y snapshots
-                        self.strategy.model_snapshot = 0
-                        print(f"--- [DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
+                    # If a model loading path was provided when the worker was created, than load the model.
+                    if self.load_path:
+                        self.strategy.model = self.strategy.load_model(self.load_path)
+                        
+                    # If there are newly received data points process them and report the results.
+                    if all_new_values:
+                        results = self.strategy.process_batch(self.mad, self.median, all_new_values)
+                        self.report(results)
 
-                    os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
-                    self.strategy.save_model(os.path.join(MODELS_DIR, self.strategy.name))
-                    self.strategy.last_save_time = time.time()
-                    self.strategy.model_snapshot += 1
+                    # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
+                    # Elif last snapshot was made more than SELF.SAVE_EVERY seconds ago, save it.
+                    if self.strategy.last_save_time is None:
+                        self.strategy.last_save_time = time.time()
+                    elif time.time() - self.strategy.last_save_time > self.save_every: # Save every X seconds 
+                        if self.strategy.model_snapshot >= self.max_snapshots: # Keep only last Y snapshots
+                            self.strategy.model_snapshot = 0
+                            print(f"--- [DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
 
-                # if results:
-                #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
+                        os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
+                        self.strategy.save_model(os.path.join(MODELS_DIR, self.strategy.name))
+                        self.strategy.last_save_time = time.time()
+                        self.strategy.model_snapshot += 1
+
+                    # if results:
+                    #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
 
     def report(self, results: list[dict]):
         """Prints the results of the anomaly detection in a readable format."""

@@ -16,7 +16,7 @@ active_workers = []
 
 def run_model_worker_process(
         port: int, # A port on which the ZMQWroker is going to wait for data points from the Cpp side.
-        Amodel: str = "SKlearnIsolatedForest", # If a basic name is given, initiates a new model. When given a path, loads the model from that path.
+        received_strategy: str | None = "SKlearnIsolatedForest", # If a basic name is given, initiates a new model. When given a path, loads the model from that path.
         serialization: str = "json"
     ):
     """Entry point for the multiprocessing.Process"""
@@ -24,15 +24,17 @@ def run_model_worker_process(
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     # Check if their is a saved model
     folder = "./py_analytics/models"
-    if Amodel == "RiverHalfSpaceTrees":
+    if received_strategy == "RiverHalfSpaceTrees":
         strategy = RiverStrategy()
-    elif Amodel == "SKlearnIsolatedForest":
+    elif received_strategy == "SKlearnIsolatedForest":
         strategy = IsolationForestStrategy()
-    elif ".pkl" in Amodel: # If a specific path to a model is given, load the given model.
+    elif received_strategy == "None":
+        strategy = None
+    elif ".pkl" in received_strategy: # If a specific path to a model is given, load the given model.
         models = get_saved_models(folder_path=folder)
-        if Amodel in [str(model) for model in models]:
-            strategy = joblib.load(Amodel)['model_state']
-            strategy.logger.info(f"--- [LOADED] {joblib.load(Amodel)['metadata']}")
+        if received_strategy in [str(model) for model in models]:
+            strategy = joblib.load(received_strategy)['model_state']
+            strategy.logger.info(f"--- [LOADED] {joblib.load(received_strategy)['metadata']}")
         else:
             raise NameError("--- [ERROR] Please provide a valid path to load an Amodel model")
     else:
@@ -94,19 +96,19 @@ def start_manager(port: int = 5555):
                 # Support both JSON object and raw port
                 if isinstance(msg, dict):
                     stream_port = msg.get('port')
-                    model_type = msg.get('ml_model')
+                    strategy = msg.get('ml_model')
                     serialization = msg.get('serialization', 'json')
                 else:
                     stream_port = msg
-                    model_type = "RiverHalfSpaceTrees"
+                    strategy = None
                     serialization = "json"
 
                 if not stream_port or not isinstance(stream_port, int) or not (1024 <= stream_port <= 65535):
                     raise ValueError(f"Invalid or out-of-bounds network port specified: {stream_port}")
                 
-                if not isinstance(model_type, str) or not model_type.strip():
-                    raise ValueError("Model type must be a non-empty string definition.")
-            
+                if not isinstance(strategy, (str, type(None))) or (isinstance(strategy, str) and not strategy.strip()):
+                    raise ValueError("Strategy must be a non-empty string definition or None.")
+
             except (ValueError, TypeError) as validation_err:
                 print(f"--- [ERROR] Validation error: {validation_err}")
                 discovery.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
@@ -115,7 +117,7 @@ def start_manager(port: int = 5555):
             try:
                 p = multiprocessing.Process(
                     target=run_model_worker_process, 
-                    args=(stream_port, model_type, serialization), 
+                    args=(stream_port, strategy, serialization), 
                     daemon=True
                 )
                 p.start()
@@ -127,7 +129,7 @@ def start_manager(port: int = 5555):
 
             try:
                 discovery.send_json({"status": "worker_spawned", "port": stream_port})
-                print(f"--- [MANAGER] Started {model_type} worker for port {stream_port}")
+                print(f"--- [MANAGER] Started {strategy} worker for port {stream_port}")
             except zmq.ZMQError as send_err:
                 print(f"--- [ERROR] Failed to send confirmation message: {send_err}")
                 continue

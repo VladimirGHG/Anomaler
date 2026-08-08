@@ -19,7 +19,7 @@ class SourceGroup{
 public:
 
     // Construct a SourceGroup from a list of source type names and attributes {source_name: {{source_type:}, {readport:}, {port:}, {frequency:}, {ml_model:}, {data_mode:}, {serialization:}, {batch_size:}, {verbose:}}.
-    SourceGroup(std::unordered_map<std::string, FieldMap> group): group_(std::move(group)) {}
+    SourceGroup(std::unordered_map<std::string, FieldMap> group, std::unordered_map<std::string, double> sync): group_(std::move(group)), sync_(std::move(sync)) {}
 
     SourceGroup() = default;
 
@@ -44,6 +44,7 @@ private:
     }
 
     std::unordered_map<std::string, FieldMap> group_;
+    std::unordered_map<std::string, double> sync_;
     std::vector<PROCESS_INFORMATION> processes_;
 };
 

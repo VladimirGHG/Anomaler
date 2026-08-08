@@ -1,5 +1,6 @@
 import datetime
 
+import zmq
 import numpy as np
 import math
 
@@ -10,6 +11,9 @@ class VirtualSensor:
         self.connected_sensors = connected_sensors
         self.connected_sensors_weights = initial_connected_sensors_weights
         self.sampling_rate = sampling_rate
+        
+        context = zmq.Context()
+        self.socket = context.socket(zmq.DEALER)
 
     def correlation(self, batches: list[dict], from_time: str, to_time: str):
         for connected_sensor, sampling_rate_ in self.connected_sensors.items():
