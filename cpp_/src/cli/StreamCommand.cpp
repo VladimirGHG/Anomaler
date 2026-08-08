@@ -9,7 +9,7 @@
 #include <iostream>
 
 std::string validate_ml_model(const std::string& input) {
-    if (input == "RiverHalfSpaceTrees" || input == "SKlearnIsolatedForest") {
+    if (input == "RiverHalfSpaceTrees" || input == "SKlearnIsolatedForest" || input == "None") {
         return "";
     }
     if (input.length() >= 4 && input.compare(input.length() - 4, 4, ".pkl") == 0) {

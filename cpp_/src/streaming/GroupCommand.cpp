@@ -20,48 +20,55 @@ int run_group(const GroupOptions& opts) {
 
         YAML::Node config = YAML::LoadFile(opts.file_path);
 
-        std::cout << "[INFO] Launching Source Group..."
-                  << std::endl;
+        std::cout << "[INFO] Launching Source Group..." << std::endl;
 
-        if (!config["sources"]) {
-            std::cerr << "[ERROR] Configuration does not contain 'sources'" << std::endl;
+        if (!config["groups"]) {
+            std::cerr << "[ERROR] Configuration does not contain 'groups'" << std::endl;
             return 1;
         }
 
         std::unordered_map<std::string, FieldMap> group;
-        YAML::Node sources = config["sources"];
+        std::unordered_map<std::string, double> sync;
+        YAML::Node groups = config["groups"];
+        
+        for (const auto& entry : groups) {
+            std::string group_name = entry.first.as<std::string>();
+            YAML::Node group_config = entry.second;
 
-        for (const auto& entry : sources) {
-            std::string source_name =
-                entry.first.as<std::string>();
+            YAML::Node sources = group_config["sources"];
+            YAML::Node sync_config = group_config["synchronization"];
 
-            YAML::Node source = entry.second;
+            for (const auto& entry : sources) {
+                std::string source_name = entry.first.as<std::string>();
 
-            FieldMap fields;
+                YAML::Node source = entry.second;
 
-            fields["source_type"] = source["source_type"].as<std::string>();
+                FieldMap fields;
 
-            fields["port"] = source["port"].as<int>();
+                fields["source_type"] = source["source_type"].as<std::string>();
 
-            fields["frequency"] = source["frequency"].as<double>();
+                fields["port"] = source["port"].as<int>();
 
-            fields["ml_model"] = source["ml_model"].as<std::string>();
+                fields["frequency"] = source["frequency"].as<double>();
 
-            fields["data_mode"] = source["data_mode"].as<std::string>();
+                fields["ml_model"] = source["ml_model"].as<std::string>();
 
-            fields["serialization"] = source["serialization"].as<std::string>();
+                fields["data_mode"] = source["data_mode"].as<std::string>();
 
-            fields["batch_size"] = source["batch_size"].as<int>();
+                fields["serialization"] = source["serialization"].as<std::string>();
 
-            fields["verbose"] = source["verbose"].as<bool>();
+                fields["batch_size"] = source["batch_size"].as<int>();
 
-            group[source_name] = std::move(fields);
-        }
+                fields["verbose"] = source["verbose"].as<bool>();
 
-        SourceGroup sourceGroup(group);
-        sourceGroup.launch();
+                group[source_name] = std::move(fields);
+            }
+
+            SourceGroup sourceGroup(group, sync);
+            sourceGroup.launch();
 
         return 0;
+        }
     }
 
     catch (const YAML::BadFile& e) {
