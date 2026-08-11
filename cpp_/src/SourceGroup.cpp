@@ -1,7 +1,7 @@
 #include "SourceGroup.h"
 #include <iostream>
 #include <sstream>
-
+#include <zmq.hpp>
 namespace {
 
 const std::unordered_map<std::string, std::string> kFieldToFlag = {
@@ -13,7 +13,7 @@ const std::unordered_map<std::string, std::string> kFieldToFlag = {
     {"readport", "--rp"},
     {"source_type", "-s"},
     {"data_mode", "--dm"},
-    {"sensorname", "--sn"},
+    {"source_name", "--sn"},
     {"serialization", "--ser"},
 };
 
@@ -39,7 +39,6 @@ void SourceGroup::insertUpdate(const std::string& source_name, Args&&... args) {
     FieldMap& entry = group_[source_name];
     setFields(entry, std::forward<Args>(args)...);
 }
-
 
 void SourceGroup::launch() {
     for (const auto& [source_name, attributes] : group_) {

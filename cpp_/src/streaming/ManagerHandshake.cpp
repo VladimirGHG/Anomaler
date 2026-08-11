@@ -11,12 +11,14 @@ bool perform_manager_handshake(zmq::context_t& context, const StreamOptions& opt
     announcer.connect(kManagerEndpoint);
 
     nlohmann::json registration = {
-        {"action", "start"},
+        {"action", "register_stream"},
         {"port", opts.port},
         {"model", opts.source_type},
         {"mode", opts.data_mode},
         {"ml_model", opts.ml_model},
-        {"serialization", opts.serialization}
+        {"serialization", opts.serialization},
+        {"source_name", opts.source_name},
+        {"group_name", opts.group_name}
     };
 
     announcer.set(zmq::sockopt::linger, 0);

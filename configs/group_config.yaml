@@ -1,5 +1,15 @@
 groups:
   group1:
+    virtual_sensor:
+      replicate: source3
+      connections:
+        - source1
+        - source2
+        - source3
+        - source4
+      pca:
+        n_timestamps: 2000
+
     synchronization:
       frequency: null
 

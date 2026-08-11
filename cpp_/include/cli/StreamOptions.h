@@ -10,7 +10,8 @@ struct StreamOptions {
     std::string data_mode = "default";
     std::string ml_model = "SKlearnIsolatedForest";
     std::string readport;
-    std::string sensorname;
+    std::string source_name;
     std::string serialization = "json";
+    std::string group_name;
     bool verbose = false;
 };

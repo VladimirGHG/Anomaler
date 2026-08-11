@@ -35,8 +35,9 @@ int run_group(const GroupOptions& opts) {
             std::string group_name = entry.first.as<std::string>();
             YAML::Node group_config = entry.second;
 
-            YAML::Node sources = group_config["sources"];
+            YAML::Node vs_config = group_config["virtual_sensor"]["pca"];
             YAML::Node sync_config = group_config["synchronization"];
+            YAML::Node sources = group_config["sources"];
 
             for (const auto& entry : sources) {
                 std::string source_name = entry.first.as<std::string>();
@@ -117,4 +118,6 @@ int run_group(const GroupOptions& opts) {
 
         return 1;
     }
+
+    return 1;
 }

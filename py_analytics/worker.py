@@ -18,8 +18,9 @@ class ZMQWorker:
     def __init__(self, port, strategy: AnomalyModel | None, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
         self.port = port
         self.strategy = strategy
-        self.context = zmq.Context()
-        self.receiver = self.context.socket(zmq.PULL)
+
+        context = zmq.Context()
+        self.receiver = context.socket(zmq.PULL)
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
         self.batch_id = 0
 
@@ -111,6 +112,9 @@ class ZMQWorker:
 
                     # if results:
                     #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
+
+                context = zmq.Context()
+
 
     def report(self, results: list[dict]):
         """Prints the results of the anomaly detection in a readable format."""
