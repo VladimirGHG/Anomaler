@@ -98,6 +98,7 @@ def start_manager(port: int = 5555):
                     stream_port = msg.get('port')
                     strategy = msg.get('ml_model')
                     serialization = msg.get('serialization', 'json')
+                    action = msg.get('action', 'register_stream')
                 else:
                     stream_port = msg
                     strategy = None
@@ -114,25 +115,31 @@ def start_manager(port: int = 5555):
                 discovery.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
                 continue
 
-            try:
-                p = multiprocessing.Process(
-                    target=run_model_worker_process, 
-                    args=(stream_port, strategy, serialization), 
-                    daemon=True
-                )
-                p.start()
-                active_workers.append(p)
-            except Exception as proc_err:
-                print(f"--- [ERROR] Failed to start worker process: {proc_err}")
-                discovery.send_json({"status": "error", "message": f"Failed to start worker: {proc_err}"})
-                continue
+            if action == "register_stream":
+                try:
+                    p = multiprocessing.Process(
+                        target=run_model_worker_process, 
+                        args=(stream_port, strategy, serialization), 
+                        daemon=True
+                    )
+                    p.start()
+                    active_workers.append(p)
+                except Exception as proc_err:
+                    print(f"--- [ERROR] Failed to start worker process: {proc_err}")
+                    discovery.send_json({"status": "error", "message": f"Failed to start worker: {proc_err}"})
+                    continue
 
-            try:
-                discovery.send_json({"status": "worker_spawned", "port": stream_port})
-                print(f"--- [MANAGER] Started {strategy} worker for port {stream_port}")
-            except zmq.ZMQError as send_err:
-                print(f"--- [ERROR] Failed to send confirmation message: {send_err}")
-                continue
+                try:
+                    discovery.send_json({"status": "worker_spawned", "port": stream_port})
+                    print(f"--- [MANAGER] Started {strategy} worker for port {stream_port}")
+                except zmq.ZMQError as send_err:
+                    print(f"--- [ERROR] Failed to send confirmation message: {send_err}")
+                    continue
+
+            # -----REGISTER GROUPS----- Future implementation for group management
+            elif action == "register_group":
+                pass
+            # --------------------------------------------------------------------
 
         except Exception as e:
             print(f"--- [ERROR] Unexpected exception in manager loop: {e}")

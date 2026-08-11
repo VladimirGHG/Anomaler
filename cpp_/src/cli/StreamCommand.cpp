@@ -31,7 +31,7 @@ CLI::App* setup_stream_command(CLI::App& app, StreamOptions& opts) {
     stream_cmd->add_option("--rp,--readport", opts.readport, "ZeroMQ port for reading the data from the sensor")
               ->capture_default_str();
 
-    stream_cmd->add_option("--sn,--sensorname", opts.sensorname, "Name of the sensor")
+    stream_cmd->add_option("--sn,--sensor_name", opts.source_name, "Name of the sensor")
               ->capture_default_str();
 
     // Port: Must be a positive number
@@ -62,9 +62,12 @@ CLI::App* setup_stream_command(CLI::App& app, StreamOptions& opts) {
               ->check(CLI::NonNegativeNumber)
               ->capture_default_str();
     
-    stream_cmd->add_option("--ser,--serialization", opts.serialization, "Number of points to send in each batch (0 for all available)")
+    stream_cmd->add_option("--ser,--serialization", opts.serialization, "The serialization protocol to use for sending data (json or flatbuffers)")
               ->check(CLI::IsMember({"json", "flatbuffers"}))
               ->default_val("json");
+
+    stream_cmd->add_option("--g,--group_name", opts.group_name, "Name of the group to which the stream belongs")
+              ->capture_default_str();
 
     stream_cmd->add_flag("-v,--verbose", opts.verbose, "Enable detailed logging for the stream command");
 
@@ -85,7 +88,7 @@ int run_stream(const StreamOptions& opts) {
     }
  
     DataSender data_sender = build_data_sender(opts);
-    auto source = SourceFactory::create(opts.source_type, opts.data_mode, opts.readport, opts.sensorname);
+    auto source = SourceFactory::create(opts.source_type, opts.data_mode, opts.readport, opts.source_name);
  
     return run_polling_loop(data_sender, *source, opts);
 }

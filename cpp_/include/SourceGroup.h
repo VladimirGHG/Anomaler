@@ -33,7 +33,10 @@ public:
     void launch();
     void waitAll();
     void terminateAll();
-
+    std::string getName() const {
+        return "SourceGroup";
+    }
+    
 private:
     void setFields(FieldMap&) {}
 

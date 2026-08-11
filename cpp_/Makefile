@@ -21,6 +21,7 @@ SRC = src/main.cpp \
       src/DataSender.cpp \
       src/SourceFactory.cpp \
       src/SourceGroup.cpp \
+      src/GroupManager.cpp \
       src/sources/RandomSource.cpp \
       src/sources/OutlierSource.cpp \
       src/sources/DriftDecorator.cpp \
@@ -29,7 +30,8 @@ SRC = src/main.cpp \
       src/streaming/GroupCommand.cpp \
       src/streaming/PollingLoop.cpp \
       src/streaming/DataSenderFactory.cpp \
-      src/streaming/ManagerHandshake.cpp
+      src/streaming/ManagerHandshake.cpp \
+      src/streaming/GroupManagerHandshake.cpp
 TARGET = builds/main
 
 all: $(GEN_HEADER)
