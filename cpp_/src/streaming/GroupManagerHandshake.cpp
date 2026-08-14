@@ -1,4 +1,5 @@
 #include "streaming/GroupManagerHandshake.h"
+#include "GroupOptions.h"
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -10,8 +11,7 @@ constexpr int kHandshakeTimeoutMs = 60'000;
 
 }
 
-bool perform_group_manager_handshake(zmq::context_t& context, const std::string& group_id,
-    const std::string& synchronization_mode, double synchronization_frequency, int calibration_samples) {
+bool perform_group_manager_handshake(zmq::context_t& context, const GroupOptions& opts) {
         
     try {
         zmq::socket_t announcer(context, zmq::socket_type::req);
@@ -23,25 +23,26 @@ bool perform_group_manager_handshake(zmq::context_t& context, const std::string&
 
         nlohmann::json registration = {
             {"action", "register_group"},
-            {"group_id", group_id},
+            {"group_id", opts.group_id},
 
             {
                 "synchronization",
                 {
-                    {"mode", synchronization_mode},
-                    {"frequency", synchronization_frequency}
+                    {"frequency", opts.synchronization_frequency}
                 }
             },
 
             {
                 "virtual_sensor",
                 {
-                    {"calibration_samples", calibration_samples}
+                    {"target", opts.target},
+                    {"connections", opts.connections},
+                    {"pca_n_timestamps", opts.pca_n_timestamps}
                 }
             }
         };
 
-        std::cout << "[GROUP MANAGER] Registering group '" << group_id << "' with Python Manager..." << std::endl;
+        std::cout << "[GROUP MANAGER] Registering group '" << opts.group_id << "' with Python Manager..." << std::endl;
         auto send_result = announcer.send(zmq::buffer(registration.dump()), zmq::send_flags::none);
 
         if (!send_result) {
@@ -72,7 +73,7 @@ bool perform_group_manager_handshake(zmq::context_t& context, const std::string&
 
         std::cout
             << "[GROUP MANAGER] Group '"
-            << group_id
+            << opts.group_id
             << "' registered successfully."
             << std::endl;
 

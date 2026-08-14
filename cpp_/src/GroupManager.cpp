@@ -2,9 +2,7 @@
 #include <iostream>
 #include <zmq.hpp>
 
-int GroupManager::launchGroup(const std::vector<SourceGroup>& launch_groups = {}) {
-    // zmq::context_t context(1);
-    
+int GroupManager::launchGroup(const std::vector<SourceGroup>& launch_groups = {}) {    
     std::vector<SourceGroup> groups_to_launch;
     if (launch_groups.empty()) {
         groups_to_launch = groups;

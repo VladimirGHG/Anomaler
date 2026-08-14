@@ -4,16 +4,14 @@ import zmq
 import numpy as np
 import math
 
+from ..worker import ZMQWorker
+
 class VirtualSensor:
-    def __init__(self, name, sensor, sampling_rate: int, connected_sensors: dict[str, float], initial_connected_sensors_weights: list[float] = []):
+    def __init__(self, name, group_config: dict, group_workers: list[ZMQWorker], initial_connected_sensors_weights: list[float] = []):
         self.name = name
-        self.sensor = sensor
-        self.connected_sensors = connected_sensors
+        self.group_config = group_config
+        self.group_workers = group_workers
         self.connected_sensors_weights = initial_connected_sensors_weights
-        self.sampling_rate = sampling_rate
-        
-        context = zmq.Context()
-        self.socket = context.socket(zmq.DEALER)
 
     def correlation(self, batches: list[dict], from_time: str, to_time: str):
         for connected_sensor, sampling_rate_ in self.connected_sensors.items():

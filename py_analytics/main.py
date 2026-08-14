@@ -92,30 +92,31 @@ def start_manager(port: int = 5555):
                     pass
                 continue
 
-            try:
-                # Support both JSON object and raw port
-                if isinstance(msg, dict):
-                    stream_port = msg.get('port')
-                    strategy = msg.get('ml_model')
-                    serialization = msg.get('serialization', 'json')
-                    action = msg.get('action', 'register_stream')
-                else:
-                    stream_port = msg
-                    strategy = None
-                    serialization = "json"
-
-                if not stream_port or not isinstance(stream_port, int) or not (1024 <= stream_port <= 65535):
-                    raise ValueError(f"Invalid or out-of-bounds network port specified: {stream_port}")
-                
-                if not isinstance(strategy, (str, type(None))) or (isinstance(strategy, str) and not strategy.strip()):
-                    raise ValueError("Strategy must be a non-empty string definition or None.")
-
-            except (ValueError, TypeError) as validation_err:
-                print(f"--- [ERROR] Validation error: {validation_err}")
-                discovery.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
-                continue
+            action = msg.get('action', 'register_stream')
 
             if action == "register_stream":
+                try:
+                    if isinstance(msg, dict):
+                        stream_port = msg.get('port')
+                        strategy = msg.get('ml_model')
+                        serialization = msg.get('serialization', 'json')
+                    else:
+                        stream_port = msg
+                        strategy = None
+                        serialization = "json"
+    
+                    if not stream_port or not isinstance(stream_port, int) or not (1024 <= stream_port <= 65535):
+                        raise ValueError(f"Invalid or out-of-bounds network port specified: {stream_port}")
+                    
+                    if not isinstance(strategy, (str, type(None))) or (isinstance(strategy, str) and not strategy.strip()):
+                        raise ValueError("Strategy must be a non-empty string definition or None.")
+    
+                except (ValueError, TypeError) as validation_err:
+                    print(f"--- [ERROR] Validation error: {validation_err}")
+                    discovery.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
+                    continue
+
+
                 try:
                     p = multiprocessing.Process(
                         target=run_model_worker_process, 
@@ -129,6 +130,7 @@ def start_manager(port: int = 5555):
                     discovery.send_json({"status": "error", "message": f"Failed to start worker: {proc_err}"})
                     continue
 
+
                 try:
                     discovery.send_json({"status": "worker_spawned", "port": stream_port})
                     print(f"--- [MANAGER] Started {strategy} worker for port {stream_port}")
@@ -136,10 +138,25 @@ def start_manager(port: int = 5555):
                     print(f"--- [ERROR] Failed to send confirmation message: {send_err}")
                     continue
 
-            # -----REGISTER GROUPS----- Future implementation for group management
+
             elif action == "register_group":
-                pass
-            # --------------------------------------------------------------------
+                if isinstance(msg, dict):
+                    group_id = msg.get('group_id')
+
+                    synchronization = msg.get('synchronization', {})
+                    virtual_sensor = msg.get('virtual_sensor', {})
+
+                    frequency = synchronization.get('frequency', 0.5)
+                    target = virtual_sensor.get('target', None)
+                    connections = virtual_sensor.get('connections', [])
+                    pca_n_timestamps = synchronization.get('pca_n_timestamps', 10)
+                try:
+                    discovery.send_json({"status": "group_registered", "id": group_id})
+                    print(f"--- [MANAGER] Registered group {group_id} with target {target} and connections {connections}")
+                except zmq.ZMQError as send_err:
+                    print(f"--- [ERROR] Failed to send group registration message: {send_err}")
+                    return 1
+
 
         except Exception as e:
             print(f"--- [ERROR] Unexpected exception in manager loop: {e}")

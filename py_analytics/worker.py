@@ -70,7 +70,8 @@ class ZMQWorker:
                     self.batch_id += 1
                 else:
                     print(f"--- [INFO] Batch with ID {packet['ID']} received. Expected ID: {self.batch_id}.")
-                    continue # Skip processing if the batch ID does not match the expected ID
+                    continue
+                
 
                 all_new_values = {}
                 for packet in batch_of_packets:
