@@ -1,7 +1,7 @@
 groups:
   group1:
     virtual_sensor:
-      replicate: source3
+      target: source3
       connections:
         - source1
         - source2

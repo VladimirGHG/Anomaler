@@ -1,6 +1,7 @@
 #include "GroupCommand.h"
 #include "SourceGroup.h"
 #include "GroupOptions.h"
+#include "GroupManagerHandshake.h"
 
 #include <iostream>
 #include <unordered_map>
@@ -28,16 +29,30 @@ int run_group(const GroupOptions& opts) {
         }
 
         std::unordered_map<std::string, FieldMap> group;
-        std::unordered_map<std::string, double> sync;
         YAML::Node groups = config["groups"];
-        
+            
         for (const auto& entry : groups) {
-            std::string group_name = entry.first.as<std::string>();
+            std::string group_id = entry.first.as<std::string>();
             YAML::Node group_config = entry.second;
 
-            YAML::Node vs_config = group_config["virtual_sensor"]["pca"];
-            YAML::Node sync_config = group_config["synchronization"];
+            YAML::Node virtual_sensor_config = group_config["virtual_sensor"];
+            YAML::Node synchronization_config = group_config["synchronization"];
             YAML::Node sources = group_config["sources"];
+
+            GroupOptions group_options;
+
+            group_options.group_id = group_id;
+            group_options.target = virtual_sensor_config["target"].as<std::string>();
+
+            group_options.connections = virtual_sensor_config["connections"].as<std::vector<std::string>>();
+
+            group_options.pca_n_timestamps = virtual_sensor_config["pca"]["n_timestamps"].as<int>();
+
+            if (synchronization_config["frequency"] && !synchronization_config["frequency"].IsNull()) {
+                group_options.synchronization_frequency = synchronization_config["frequency"].as<double>();
+            }
+
+            perform_group_manager_handshake(zmq::context_t(1), group_options);
 
             for (const auto& entry : sources) {
                 std::string source_name = entry.first.as<std::string>();
@@ -65,7 +80,7 @@ int run_group(const GroupOptions& opts) {
                 group[source_name] = std::move(fields);
             }
 
-            SourceGroup sourceGroup(group, sync);
+            SourceGroup sourceGroup(group);
             sourceGroup.launch();
 
         return 0;
