@@ -4,7 +4,7 @@ import zmq
 import numpy as np
 import math
 
-from ..worker import ZMQWorker
+from ..workers.worker import ZMQWorker
 
 class VirtualSensor:
     def __init__(self, name, group_config: dict, group_workers: list[ZMQWorker], initial_connected_sensors_weights: list[float] = []):

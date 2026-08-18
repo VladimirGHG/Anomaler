@@ -12,6 +12,6 @@ struct StreamOptions {
     std::string readport;
     std::string source_name;
     std::string serialization = "json";
-    std::string group_name;
+    std::string group_id;
     bool verbose = false;
 };

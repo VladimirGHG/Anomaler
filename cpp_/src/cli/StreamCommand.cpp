@@ -66,7 +66,7 @@ CLI::App* setup_stream_command(CLI::App& app, StreamOptions& opts) {
               ->check(CLI::IsMember({"json", "flatbuffers"}))
               ->default_val("json");
 
-    stream_cmd->add_option("--g,--group_name", opts.group_name, "Name of the group to which the stream belongs")
+    stream_cmd->add_option("-g,--group_id", opts.group_id, "ID of the group to which the stream belongs")
               ->capture_default_str();
 
     stream_cmd->add_flag("-v,--verbose", opts.verbose, "Enable detailed logging for the stream command");

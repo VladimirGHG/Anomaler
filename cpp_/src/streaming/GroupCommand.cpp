@@ -10,7 +10,7 @@
 CLI::App* setup_group_command(CLI::App& app, GroupOptions& opts) {
     auto* group_cmd = app.add_subcommand("group", "Launch a predefined group of stream sources");
 
-    group_cmd->add_option("--pth,--path", opts.file_path, "The path to the group configuration file")->default_val("../configs/group_config.yaml");
+    group_cmd->add_option("--pth,--path", opts.file_path, "The path to the group configuration file")->default_val("../config/group_config.yaml");
 
     return group_cmd;
 }
@@ -74,6 +74,8 @@ int run_group(const GroupOptions& opts) {
                 fields["serialization"] = source["serialization"].as<std::string>();
 
                 fields["batch_size"] = source["batch_size"].as<int>();
+                
+                fields["group_id"] = group_options.group_id;
 
                 fields["verbose"] = source["verbose"].as<bool>();
 

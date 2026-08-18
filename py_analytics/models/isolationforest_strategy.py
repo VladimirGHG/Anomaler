@@ -6,9 +6,9 @@ from sklearn.model_selection import KFold
 from sklearn.utils import shuffle
 from sklearn.ensemble import IsolationForest
 
-from py_analytics.models.base import AnomalyModel, BatchBufferPolicy
+from py_analytics.models.base import Strategy, BatchBufferPolicy
 
-class IsolationForestStrategy(AnomalyModel):
+class IsolationForestStrategy(Strategy):
     """Implements a batch-based Isolation Forest strategy with a warmup phase and periodic retraining."""
     def __init__(self, contamination: float = None, buffer_limit: int = 200, max_buffer_size: int = 400, buffer_policy: BatchBufferPolicy = BatchBufferPolicy.CLEAR_ON_DRIFT, k: float = 3.0):
 

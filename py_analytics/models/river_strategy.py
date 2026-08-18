@@ -1,8 +1,8 @@
 from river import anomaly
 
-from py_analytics.models.base import AnomalyModel, RiverDriftPolicy
+from py_analytics.models.base import Strategy, RiverDriftPolicy
 
-class RiverStrategy(AnomalyModel):
+class RiverStrategy(Strategy):
     """Implements a streaming anomaly detection strategy using River's online training HalfSpaceTrees."""
     def __init__(self, window_size: int = 250, drift_policy: RiverDriftPolicy = RiverDriftPolicy.RESET):
         super().__init__("RiverHalfSpaceTrees")
