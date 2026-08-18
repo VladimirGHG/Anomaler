@@ -7,17 +7,20 @@ from datetime import datetime
 import zmq
 import numpy as np
 
-from .models.base import AnomalyModel
+from ..models.base import Strategy
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "models_saved")
+OUTER_DIR = os.path.dirname(BASE_DIR)
+MODELS_DIR = os.path.join(OUTER_DIR, "models_saved")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, port, strategy: AnomalyModel | None, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
+    def __init__(self, vs_group_config: dict, port, strategy: Strategy | None, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
         self.port = port
+        self.vs_group_config = vs_group_config
         self.strategy = strategy
+        self.ready = False
 
         context = zmq.Context()
         self.receiver = context.socket(zmq.PULL)
@@ -46,7 +49,7 @@ class ZMQWorker:
         self.mad = np.median(np.abs(arr - self.median)) * 1.4826 # A scaling factor to make MAD comparable to STD for normal data distributions
     
     def start(self):
-        time_lst = []
+
         while True:
             if os.getppid() == 1: break
             # Check if there is data
@@ -113,9 +116,6 @@ class ZMQWorker:
 
                     # if results:
                     #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
-
-                context = zmq.Context()
-
 
     def report(self, results: list[dict]):
         """Prints the results of the anomaly detection in a readable format."""

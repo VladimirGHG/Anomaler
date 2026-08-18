@@ -18,7 +18,7 @@ class BatchBufferPolicy(Enum):
     CLEAR_ON_DRIFT = "clear_on_drift" # Clear the buffer when drift is detected
     KEEP_WINDOW = "keep_window" # Keep the last N data points as a sliding window, even after drift
 
-class AnomalyModel(ABC):
+class Strategy(ABC):
     model: Any
     last_report_time: Optional[float]
 

@@ -7,6 +7,7 @@ namespace {
 const std::unordered_map<std::string, std::string> kFieldToFlag = {
     {"port", "-p"},
     {"verbose", "-v"},
+    {"group_id", "-g"},
     {"frequency", "-f"},
     {"batch_size", "-b"},
     {"ml_model", "--ml"},

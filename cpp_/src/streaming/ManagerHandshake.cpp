@@ -18,7 +18,7 @@ bool perform_manager_handshake(zmq::context_t& context, const StreamOptions& opt
         {"ml_model", opts.ml_model},
         {"serialization", opts.serialization},
         {"source_name", opts.source_name},
-        {"group_name", opts.group_name}
+        {"group_id", opts.group_id}
     };
 
     announcer.set(zmq::sockopt::linger, 0);
