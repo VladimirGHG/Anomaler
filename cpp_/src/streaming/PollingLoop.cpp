@@ -5,6 +5,8 @@
 #include <thread>
 #include <ctime>
 #include <iostream>
+#include <variant>
+#include <type_traits>
 
 namespace {
 
@@ -20,7 +22,20 @@ void flush_remaining_points(DataSender& sender) {
     }
 }
 
-}
+// SFINAE helpers for C++17 streamability and container checks
+template <typename T, typename = void>
+struct is_streamable : std::false_type {};
+
+template <typename T>
+struct is_streamable<T, std::void_t<decltype(std::cout << std::declval<T>())>> : std::true_type {};
+
+template <typename T, typename = void>
+struct is_container : std::false_type {};
+
+template <typename T>
+struct is_container<T, std::void_t<decltype(std::declval<T>().begin()), decltype(std::declval<T>().end())>> : std::true_type {};
+
+} // namespace
 
 int run_polling_loop(DataSender& sender, DataSource& source, const StreamOptions& opts) {
     std::signal(SIGINT, handle_shutdown_signal);
@@ -38,7 +53,22 @@ int run_polling_loop(DataSender& sender, DataSource& source, const StreamOptions
         sender.stream.addDataPoint(dp);
 
         if (opts.verbose) {
-            std::cout << "[INFO] Added Data Point: " << dp.getValue() << " at " << dp.getTimestamp() << std::endl;
+            std::cout << "[INFO] Added Data Point: ";
+            std::visit([](const auto& val) {
+                using T = std::decay_t<decltype(val)>;
+                if constexpr (is_streamable<T>::value) {
+                    std::cout << val;
+                } else if constexpr (is_container<T>::value) {
+                    std::cout << "[";
+                    for (size_t i = 0; i < val.size(); ++i) {
+                        std::cout << val[i] << (i + 1 < val.size() ? ", " : "");
+                    }
+                    std::cout << "]";
+                } else {
+                    std::cout << "[Unknown Type]";
+                }
+            }, dp.getValue());
+            std::cout << " at " << dp.getTimestamp() << std::endl;
         }
 
         if (static_cast<int>(sender.stream.dataPoints.size()) >= opts.batch_size) {
@@ -62,7 +92,7 @@ int run_polling_loop(DataSender& sender, DataSource& source, const StreamOptions
         tick_count++;
         auto next_deadline = stream_start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             std::chrono::duration<double>(opts.frequency * tick_count));
-            std::this_thread::sleep_until(next_deadline);
+        std::this_thread::sleep_until(next_deadline);
     }
 
     if (g_shutdown_requested.load()) {
