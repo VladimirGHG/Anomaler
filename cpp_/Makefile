@@ -7,9 +7,14 @@ FLATC = $(VCPKG_ROOT)/tools/flatbuffers/flatc
 BREW_INC = -I/opt/homebrew/include
 BREW_LIB = -L/opt/homebrew/lib
 
-INC = -I./include -I$(VCPKG_INC) $(BREW_INC)
-LIB = -L$(VCPKG_LIB) $(BREW_LIB) -lzmq -lCLI11 -lserialport -lShell32 -lyaml-cpp
-
+INC = -I./include \
+      -I./include/cli \
+      -I./include/sources \
+      -I./include/streaming \
+      -I$(VCPKG_INC) \
+      $(BREW_INC)
+      
+LIB = -L$(VCPKG_LIB) $(BREW_LIB) -lzmq -lCLI11 -lcserialport -lyaml-cpp -framework CoreFoundation -framework IOKit
 CXXFLAGS = -std=c++17 $(INC) -Wall
 
 SCHEMA = schema/telemetry.fbs

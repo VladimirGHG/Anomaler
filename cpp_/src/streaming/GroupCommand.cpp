@@ -51,8 +51,9 @@ int run_group(const GroupOptions& opts) {
             if (synchronization_config["frequency"] && !synchronization_config["frequency"].IsNull()) {
                 group_options.synchronization_frequency = synchronization_config["frequency"].as<double>();
             }
-
-            perform_group_manager_handshake(zmq::context_t(1), group_options);
+            
+            zmq::context_t context(1);
+            perform_group_manager_handshake(context, group_options);
 
             for (const auto& entry : sources) {
                 std::string source_name = entry.first.as<std::string>();

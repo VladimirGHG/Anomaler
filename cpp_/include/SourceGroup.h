@@ -4,8 +4,18 @@
 #include <array>
 #include <string>
 #include <variant>
+#include <vector>
 #include <unordered_map>
-#include <windows.h>
+#ifdef _WIN32
+  #include <windows.h>
+  using ProcessHandle = PROCESS_INFORMATION;
+#else
+  #include <sys/types.h>
+  #include <sys/wait.h>
+  #include <unistd.h>
+  #include <signal.h>
+  using ProcessHandle = pid_t;
+#endif
 
 using FieldValue = std::variant<int, double, std::string, bool>;
 using FieldMap = std::unordered_map<std::string, FieldValue>;
@@ -48,7 +58,7 @@ private:
 
     std::unordered_map<std::string, FieldMap> group_;
     std::unordered_map<std::string, double> sync_;
-    std::vector<PROCESS_INFORMATION> processes_;
+    std::vector<ProcessHandle> processes_;
 };
 
 #endif

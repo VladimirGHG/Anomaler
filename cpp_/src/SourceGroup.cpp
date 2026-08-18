@@ -1,7 +1,17 @@
 #include "SourceGroup.h"
 #include <iostream>
 #include <sstream>
+#include <vector>
+#include <cstring>
 #include <zmq.hpp>
+
+#ifndef _WIN32
+  #include <sys/types.h>
+  #include <sys/wait.h>
+  #include <unistd.h>
+  #include <signal.h>
+#endif
+
 namespace {
 
 const std::unordered_map<std::string, std::string> kFieldToFlag = {
@@ -51,23 +61,36 @@ void SourceGroup::launch() {
             continue;
         }
 
-        std::ostringstream command;
-        command << ".\\builds\\main stream";
+        std::vector<std::string> args;
 
-        // Compose the command from whatever fields are actually present.
+    #ifdef _WIN32
+        args.push_back(".\\builds\\main");
+    #else
+        args.push_back("./builds/main");
+    #endif
+        args.push_back("stream");
+
+        // Compose the arguments from whatever fields are actually present.
         for (const auto& [field, flag] : kFieldToFlag) {
             if (field == "verbose") continue;
             auto it = attributes.find(field);
             if (it == attributes.end()) continue;
-            command << " " << flag << " " << valueToString(it->second);
+            args.push_back(flag);
+            args.push_back(valueToString(it->second));
         }
         
         if (auto vIt = attributes.find("verbose"); vIt != attributes.end()) {
             if (const bool* b = std::get_if<bool>(&vIt->second); b && *b) {
-                command << " -v";
+                args.push_back("-v");
             }
         }
 
+    #ifdef _WIN32
+        std::ostringstream command;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) command << " ";
+            command << args[i];
+        }
         std::string cmdStr = command.str();
 
         STARTUPINFOA si{};
@@ -90,8 +113,8 @@ void SourceGroup::launch() {
 
         if (!ok) {
             std::cerr << "[ERROR] Failed to launch source: " << source_name
-                        << " (error " << GetLastError() << ") with command: "
-                        << cmdStr << std::endl;
+                      << " (error " << GetLastError() << ") with command: "
+                      << cmdStr << std::endl;
             continue;
         }
 
@@ -99,30 +122,67 @@ void SourceGroup::launch() {
 
         processes_.push_back(pi);
         CloseHandle(pi.hThread);
+    #else
+        pid_t pid = fork();
+        if (pid < 0) {
+            std::cerr << "[ERROR] Failed to fork process for source: " << source_name << std::endl;
+            continue;
+        }
+
+        if (pid == 0) {
+            // Child process
+            std::vector<char*> c_args;
+            for (auto& arg : args) {
+                c_args.push_back(arg.data());
+            }
+            c_args.push_back(nullptr);
+
+            execvp(c_args[0], c_args.data());
+            std::cerr << "[ERROR] execvp failed for source: " << source_name << std::endl;
+            _exit(1);
+        } else {
+            // Parent process
+            std::cout << "[INFO] Launched source '" << source_name << "' as PID " << pid << std::endl;
+            processes_.push_back(pid);
+        }
+    #endif
     }
 }
 
 void SourceGroup::waitAll() {
-    std::vector<HANDLE> handles;
-    for (auto& pi : processes_) handles.push_back(pi.hProcess);
+    if (processes_.empty()) return;
 
-    if (handles.empty()) return;
+    #ifdef _WIN32
+        std::vector<HANDLE> handles;
+        for (auto& pi : processes_) handles.push_back(pi.hProcess);
 
-    WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), TRUE, INFINITE);
+        WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), TRUE, INFINITE);
 
-    for (auto& pi : processes_) {
-        DWORD exitCode = 0;
-        GetExitCodeProcess(pi.hProcess, &exitCode);
-        std::cout << "[INFO] PID " << pi.dwProcessId << " exited with code " << exitCode << std::endl;
-        CloseHandle(pi.hProcess);
-    }
-    processes_.clear();
+        for (auto& pi : processes_) {
+            DWORD exitCode = 0;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            std::cout << "[INFO] PID " << pi.dwProcessId << " exited with code " << exitCode << std::endl;
+            CloseHandle(pi.hProcess);
+        }
+    #else
+        for (pid_t pid : processes_) {
+            int status = 0;
+            waitpid(pid, &status, 0);
+            int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            std::cout << "[INFO] PID " << pid << " exited with code " << exitCode << std::endl;
+        }
+    #endif
+        processes_.clear();
 }
 
 void SourceGroup::terminateAll() {
-    for (auto& pi : processes_) {
-        TerminateProcess(pi.hProcess, 0);
-        CloseHandle(pi.hProcess);
+    for (auto& proc : processes_) {
+    #ifdef _WIN32
+            TerminateProcess(proc.hProcess, 0);
+            CloseHandle(proc.hProcess);
+    #else
+            kill(proc, SIGTERM);
+    #endif
     }
     processes_.clear();
 }
