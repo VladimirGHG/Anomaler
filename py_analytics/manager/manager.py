@@ -6,7 +6,7 @@ import zmq
 from .runtime_manager import RuntimeManager
 from ..transport.discovery import create_discovery_socket
 
-registry = RuntimeManager()
+runtime_manager = RuntimeManager()
 
 def start_manager(port: int = 5555):
     context = zmq.Context()
@@ -23,7 +23,7 @@ def start_manager(port: int = 5555):
                 print(f"--- [ERROR] Failed to receive or decode message: {recv_err}")
                 discovery.send_json({"status": "error", "message": "Invalid JSON framing"})
 
-            registry.register(discovery, msg)
+            runtime_manager.register(discovery, msg)
 
         except Exception as e:
             print(f"--- [ERROR] Unexpected exception in manager loop: {e}")

@@ -80,6 +80,8 @@ int run_group(const GroupOptions& opts) {
 
                 fields["verbose"] = source["verbose"].as<bool>();
 
+                fields["source_name"] = source_name;
+                
                 group[source_name] = std::move(fields);
             }
 

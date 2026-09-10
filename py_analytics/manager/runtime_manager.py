@@ -4,12 +4,16 @@ import sys
 import zmq
 
 from ..config.group_config import GroupConfig
+from ..config.stream_config import StreamConfig
+from .group_runtime import GroupRuntime
+
 from ..config.worker_context import WorkerContext
 from ..workers.process import run_model_worker_process
 
 class RuntimeManager:
     def __init__(self):
         self.active_workers = []
+        self.groups: dict[str, GroupRuntime] = {}
         self._contexts: dict[str, WorkerContext] = {}
 
     def register(self, discovery_socket, msg):
@@ -27,9 +31,7 @@ class RuntimeManager:
             if isinstance(msg, dict):
                 group_id = msg.get('group_id')
                 config = GroupConfig.from_dict(msg)
-
-                context = WorkerContext(group_id=group_id, group_config=config)
-                self._contexts[group_id] = context
+                self.groups[group_id] = GroupRuntime(group_id, config)
                 
             try:
                 discovery_socket.send_json({"status": "group_registered", "id": group_id})
@@ -45,11 +47,15 @@ class RuntimeManager:
     def _register_stream(self, discovery_socket, msg):
         try:
             if isinstance(msg, dict):
-                stream_port = msg.get('port')
-                strategy = msg.get('ml_model')
-
                 group_id = msg.get('group_id', None)
-                serialization = msg.get('serialization', 'json')
+                _stream_config = StreamConfig.from_dict(msg)
+
+                self.groups[group_id].register_worker(_stream_config)
+                stream_port = _stream_config.port
+                strategy = _stream_config.strategy
+                self._contexts[group_id] = WorkerContext(group_id=group_id,
+                                                         group_runtime=self.groups[group_id],
+                                                         stream_config=_stream_config)
 
             if not stream_port or not isinstance(stream_port, int) or not (1024 <= stream_port <= 65535):
                 raise ValueError(f"Invalid or out-of-bounds network port specified: {stream_port}")
@@ -64,7 +70,7 @@ class RuntimeManager:
         try:
             p = multiprocessing.Process(
                 target=run_model_worker_process, 
-                args=(self._contexts[group_id], stream_port, strategy, serialization), 
+                args=(self._contexts[group_id],), 
                 daemon=True)
 
             p.start()

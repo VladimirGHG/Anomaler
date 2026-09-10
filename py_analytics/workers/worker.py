@@ -8,7 +8,8 @@ import zmq
 import numpy as np
 
 from ..models.base import Strategy
-
+from ..config.worker_context import WorkerContext
+from ..models.factory import create_strategy
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTER_DIR = os.path.dirname(BASE_DIR)
@@ -16,11 +17,14 @@ MODELS_DIR = os.path.join(OUTER_DIR, "models_saved")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, vs_group_config: dict, port, strategy: Strategy | None, serialization: str = "json", load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
-        self.port = port
-        self.vs_group_config = vs_group_config
-        self.strategy = strategy
-        self.ready = False
+    def __init__(self, worker_config: WorkerContext, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
+        self.group_runtime = worker_config.group_runtime
+        self_group_config = self.group_runtime.config
+        
+        self.pca_n_timestamps = self_group_config.pca_n_timestamps
+        self._n_timestamps = 0
+        self.port = worker_config.stream_config.port
+        self.serialization = worker_config.stream_config.serialization
 
         context = zmq.Context()
         self.receiver = context.socket(zmq.PULL)
@@ -36,9 +40,12 @@ class ZMQWorker:
         self.save_every = save_every
         self.max_snapshots = max_snapshots
 
-        if serialization.lower() not in ["json", "flatbuffers"]:
-            raise ValueError(f"Unsupported serialization protocol: {serialization}. Supported: 'json', 'flatbuffers'")
-        elif serialization.lower() == "flatbuffers":
+        folder = "./py_analytics/models"
+        self.strategy = create_strategy(worker_config.stream_config.strategy, folder)
+
+        if self.serialization.lower() not in ["json", "flatbuffers"]:
+            raise ValueError(f"Unsupported serialization protocol: {self.serialization}. Supported: 'json', 'flatbuffers'")
+        elif self.serialization.lower() == "flatbuffers":
             self.func = self._decode_flatbuffer
         else:       
             self.func = self._decode_json
@@ -79,6 +86,8 @@ class ZMQWorker:
                 all_new_values = {}
                 for packet in batch_of_packets:
                     all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
+
+                self.group_runtime.add_data(self.group_runtime.stream_configs[packet["source_name"]].source_name, all_new_values)
 
                 if self.strategy == None:
                     print(f"--- [INFO] No strategy provided. Sending the batch {packet['ID']} to the virtual sensor.")
