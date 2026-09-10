@@ -13,6 +13,7 @@ bool perform_manager_handshake(zmq::context_t& context, const StreamOptions& opt
     nlohmann::json registration = {
         {"action", "register_stream"},
         {"port", opts.port},
+        {"frequency", opts.frequency},
         {"model", opts.source_type},
         {"mode", opts.data_mode},
         {"ml_model", opts.ml_model},
