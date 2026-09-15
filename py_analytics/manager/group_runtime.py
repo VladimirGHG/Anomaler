@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from ..config.group_config import GroupConfig
 from ..config.stream_config import StreamConfig
-
+from ..transport.ZmqTransport import FlatBuffersReceiver
 
 @dataclass
 class GroupRuntime:
@@ -17,7 +17,8 @@ class GroupRuntime:
     stream_configs: dict[str, StreamConfig] = field(default_factory=dict)
     data_buffers: dict[str, list] = field(default_factory=dict)
     virtual_sensors: list = field(default_factory=list)
-
+    flatbuffers_receiver: FlatBuffersReceiver = field(default_factory=FlatBuffersReceiver)
+    
     def register_worker(self, contexts: list[StreamConfig] | StreamConfig) -> None:
         """Register a worker belonging to this group, by passing its stream config."""
         if not isinstance(contexts, list):

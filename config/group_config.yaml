@@ -1,6 +1,6 @@
 groups:
   group1:
-    virtual_sensor:
+    virtual_sensor: # Virtual sensor settings for the virtual sensor.
       target: source3
       connections:
         - source1
@@ -10,10 +10,14 @@ groups:
       pca:
         n_timestamps: 2000
 
-    synchronization:
+    synchronization: # Synchronization settings for the group_runtime.
       frequency: null
 
-    sources:
+    communication: # Communication settings for the group_runtime and its workers.
+      host: "127.0.0.1"
+      port_range: [5560, 5565]
+
+    sources: # Data sources.
       source1:
         source_type: random
         port: 5554

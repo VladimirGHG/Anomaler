@@ -10,6 +10,8 @@ import numpy as np
 from ..models.base import Strategy
 from ..config.worker_context import WorkerContext
 from ..models.factory import create_strategy
+from ..transport.ZmqTransport import FlatBuffersSender
+from ...serialization.generated.python.Anomaler.Serialization import TelemetryBatch, TelemetryMessage
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTER_DIR = os.path.dirname(BASE_DIR)
@@ -17,10 +19,10 @@ MODELS_DIR = os.path.join(OUTER_DIR, "models_saved")
 
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
-    def __init__(self, worker_config: WorkerContext, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
-        self.group_runtime = worker_config.group_runtime
-        self_group_config = self.group_runtime.config
-        
+    def __init__(self, worker_config: WorkerContext, group_runtime_port: int, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
+        self_group_config = worker_config.group_runtime
+
+        self.communication_host = self_group_config.communication_host
         self.pca_n_timestamps = self_group_config.pca_n_timestamps
         self._n_timestamps = 0
         self.port = worker_config.stream_config.port
@@ -30,6 +32,10 @@ class ZMQWorker:
         self.receiver = context.socket(zmq.PULL)
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
         self.batch_id = 0
+
+        group_runtime_sender = context.socket(zmq.PUSH)
+        group_runtime_sender.connect(f"tcp://{self.communication_host}:{group_runtime_port}")
+        self.flatBuffersSender = FlatBuffersSender(group_runtime_sender)
 
         self.median = 0
         self.mad = 1 # MAD / Median Absolute Deviation
@@ -87,7 +93,17 @@ class ZMQWorker:
                 for packet in batch_of_packets:
                     all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
 
-                self.group_runtime.add_data(self.group_runtime.stream_configs[packet["source_name"]].source_name, all_new_values)
+                telemetry_batch = TelemetryBatch.TelemetryBatchT()
+
+                telemetry_batch.datapoints = [
+                    TelemetryMessage.TelemetryMessageT(
+                        timestamp=timestamp,
+                        value=value
+                    )
+                    for timestamp, value in all_new_values.items()
+                ]
+                
+                self.flatBuffersSender.send(telemetry_batch)
 
                 if self.strategy == None:
                     print(f"--- [INFO] No strategy provided. Sending the batch {packet['ID']} to the virtual sensor.")
@@ -179,10 +195,9 @@ class ZMQWorker:
     def _decode_flatbuffer(self, raw: bytes):
         """Decode a FlatBuffers TelemetryBatch from raw bytes by dynamically finding the vector field."""
         try:
-            from .anomaler.Serialization import TelemetryBatch as tb
+            from ...serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
             batch = tb.TelemetryBatch.GetRootAs(raw, 0)
             
-            # FlatBuffers names methods cleanly (e.g., DatapointsLength / Datapoints)
             methods = dir(batch)
             vector_base = None
             for kw in ["Messages", "Datapoints", "Samples", "Frames", "Data"]:
@@ -217,7 +232,11 @@ class ZMQWorker:
             if datapoints:
                 return {"datapoints": datapoints}
         except Exception as e:
-            # Uncomment the next line temporarily if you need to debug schema structural anomalies
+            if e.__class__.__name__ == "ImportError":
+                print(f"[DEBUG CRASH] Flatbuffer import failed: {e}. \
+                      Ensure the generated code after compiling the .fbs \
+                      is available from Anomaler/serialization/generated/python/Anomaler/Serialization.")
+                
             print(f"[DEBUG CRASH] Flatbuffer unpack failed: {e}")
             pass
 

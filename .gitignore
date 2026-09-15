@@ -27,3 +27,4 @@ Anomaler/
 .DS_Store
 .venv/
 __pycache__/
+poetry.toml

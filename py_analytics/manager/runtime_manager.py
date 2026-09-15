@@ -32,7 +32,11 @@ class RuntimeManager:
                 group_id = msg.get('group_id')
                 config = GroupConfig.from_dict(msg)
                 self.groups[group_id] = GroupRuntime(group_id, config)
-                
+
+                self.port_allocator = PortAllocator(
+                    self.groups[group_id].config.communication_port_range[0],
+                    self.groups[group_id].config.communication_port_range[1]
+                )
             try:
                 discovery_socket.send_json({"status": "group_registered", "id": group_id})
                 print(f"--- [MANAGER] Registered group {group_id}")
@@ -68,9 +72,11 @@ class RuntimeManager:
             discovery_socket.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
 
         try:
+            group_runtime_port = self.port_allocator.allocate()
+
             p = multiprocessing.Process(
                 target=run_model_worker_process, 
-                args=(self._contexts[group_id],), 
+                args=(self._contexts[group_id], group_runtime_port), 
                 daemon=True)
 
             p.start()
@@ -106,3 +112,25 @@ class RuntimeManager:
 
         print("--- [SYSTEM] All processes cleared. Exit.")
         sys.exit(0)
+
+
+class PortAllocator:
+    """Manages allocation of network ports within a specified range to avoid conflicts."""
+    def __init__(self, start: int, end: int):
+        if not (1024 <= start <= end <= 65535):
+            raise ValueError("Invalid port range")
+
+        self.start = start
+        self.end = end
+        self._allocated: set[int] = set()
+
+    def allocate(self) -> int:
+        for port in range(self.start, self.end + 1):
+            if port not in self._allocated:
+                self._allocated.add(port)
+                return port
+
+        raise RuntimeError("No available ports")
+
+    def release(self, port: int) -> None:
+        self._allocated.discard(port)

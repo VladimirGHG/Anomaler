@@ -37,6 +37,8 @@ int run_group(const GroupOptions& opts) {
 
             YAML::Node virtual_sensor_config = group_config["virtual_sensor"];
             YAML::Node synchronization_config = group_config["synchronization"];
+            YAML::Node communication_config = group_config["communication"];
+
             YAML::Node sources = group_config["sources"];
 
             GroupOptions group_options;
@@ -50,6 +52,14 @@ int run_group(const GroupOptions& opts) {
 
             if (synchronization_config["frequency"] && !synchronization_config["frequency"].IsNull()) {
                 group_options.synchronization_frequency = synchronization_config["frequency"].as<double>();
+            }
+            
+            if (communication_config["host"] && !communication_config["host"].IsNull()) {
+                group_options.communication_host = communication_config["host"].as<std::string>();
+            }
+
+            if (communication_config["port_range"] && !communication_config["port_range"].IsNull()) {
+                group_options.communication_port_range = communication_config["port_range"].as<std::vector<int>>();
             }
             
             zmq::context_t context(1);

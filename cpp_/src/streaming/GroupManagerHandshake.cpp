@@ -39,6 +39,14 @@ bool perform_group_manager_handshake(zmq::context_t& context, const GroupOptions
                     {"connections", opts.connections},
                     {"pca_n_timestamps", opts.pca_n_timestamps}
                 }
+            },
+            
+            {
+                "communication",
+                {
+                    {"host", opts.communication_host},
+                    {"port_range", opts.communication_port_range}
+                }
             }
         };
 
