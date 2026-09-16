@@ -11,7 +11,7 @@ class FlatBuffersReceiver:
     def deserialize(self, raw: bytes):
         """Decode a FlatBuffers TelemetryBatch from raw bytes by dynamically finding the vector field."""
         try:
-            from ....serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
+            from py_analytics.serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
             batch = tb.TelemetryBatch.GetRootAs(raw, 0)
             
             methods = dir(batch)

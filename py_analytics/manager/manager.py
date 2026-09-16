@@ -6,9 +6,9 @@ import zmq
 from .runtime_manager import RuntimeManager
 from ..transport.discovery import create_discovery_socket
 
-runtime_manager = RuntimeManager()
-
 def start_manager(port: int = 5555):
+    runtime_manager = RuntimeManager()
+
     context = zmq.Context()
     discovery = create_discovery_socket(context, port)
     print("[MANAGER] Waiting for a package through the discovery socket.")

@@ -28,7 +28,7 @@ class RuntimeManager:
 
     def register(self, discovery_socket, msg):
         action = msg.get('action')
-
+        print(f"--- [MANAGER] Received action '{action}' with message: {msg}")
         if action == "register_stream":
             self._register_stream(discovery_socket, msg)
         elif action == "register_group":
@@ -56,8 +56,11 @@ class RuntimeManager:
 
     def _register_stream(self, discovery_socket, msg):
         try:
+            stream_port = None
+            strategy = None
             if isinstance(msg, dict):
                 group_id = msg.get('group_id', None)
+                print(msg)
                 _stream_config = StreamConfig.from_dict(msg)
 
                 self.groups[group_id].register_worker(_stream_config)
