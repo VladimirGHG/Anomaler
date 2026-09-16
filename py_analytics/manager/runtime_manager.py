@@ -16,6 +16,16 @@ class RuntimeManager:
         self.groups: dict[str, GroupRuntime] = {}
         self._contexts: dict[str, WorkerContext] = {}
 
+        self.context = zmq.Context()
+
+        self.group_socket = self.context.socket(zmq.PULL)
+        self.group_socket.bind("tcp://127.0.0.1:5550")
+
+        self.poller = zmq.Poller()
+        self.poller.register(self.group_socket, zmq.POLLIN)
+
+        self.running = True
+
     def register(self, discovery_socket, msg):
         action = msg.get('action')
 
@@ -33,10 +43,6 @@ class RuntimeManager:
                 config = GroupConfig.from_dict(msg)
                 self.groups[group_id] = GroupRuntime(group_id, config)
 
-                self.port_allocator = PortAllocator(
-                    self.groups[group_id].config.communication_port_range[0],
-                    self.groups[group_id].config.communication_port_range[1]
-                )
             try:
                 discovery_socket.send_json({"status": "group_registered", "id": group_id})
                 print(f"--- [MANAGER] Registered group {group_id}")
@@ -57,9 +63,9 @@ class RuntimeManager:
                 self.groups[group_id].register_worker(_stream_config)
                 stream_port = _stream_config.port
                 strategy = _stream_config.strategy
-                self._contexts[group_id] = WorkerContext(group_id=group_id,
-                                                         group_runtime=self.groups[group_id],
-                                                         stream_config=_stream_config)
+                self._contexts[f"{group_id}.{_stream_config.source_name}"] = WorkerContext(group_id=group_id,
+                                                                                group_runtime=self.groups[group_id],
+                                                                                stream_config=_stream_config)
 
             if not stream_port or not isinstance(stream_port, int) or not (1024 <= stream_port <= 65535):
                 raise ValueError(f"Invalid or out-of-bounds network port specified: {stream_port}")
@@ -72,11 +78,11 @@ class RuntimeManager:
             discovery_socket.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
 
         try:
-            group_runtime_port = self.port_allocator.allocate()
+            group_runtime_port = self.groups[group_id].config.communication_port
 
             p = multiprocessing.Process(
                 target=run_model_worker_process, 
-                args=(self._contexts[group_id], group_runtime_port), 
+                args=(self._contexts[f"{group_id}.{_stream_config.source_name}"], group_runtime_port), 
                 daemon=True)
 
             p.start()
@@ -112,25 +118,3 @@ class RuntimeManager:
 
         print("--- [SYSTEM] All processes cleared. Exit.")
         sys.exit(0)
-
-
-class PortAllocator:
-    """Manages allocation of network ports within a specified range to avoid conflicts."""
-    def __init__(self, start: int, end: int):
-        if not (1024 <= start <= end <= 65535):
-            raise ValueError("Invalid port range")
-
-        self.start = start
-        self.end = end
-        self._allocated: set[int] = set()
-
-    def allocate(self) -> int:
-        for port in range(self.start, self.end + 1):
-            if port not in self._allocated:
-                self._allocated.add(port)
-                return port
-
-        raise RuntimeError("No available ports")
-
-    def release(self, port: int) -> None:
-        self._allocated.discard(port)

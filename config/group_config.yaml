@@ -15,7 +15,7 @@ groups:
 
     communication: # Communication settings for the group_runtime and its workers.
       host: "127.0.0.1"
-      port_range: [5560, 5565]
+      port: 5560
 
     sources: # Data sources.
       source1:
