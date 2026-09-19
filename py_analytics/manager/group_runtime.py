@@ -1,13 +1,11 @@
 from fractions import Fraction
 from functools import reduce
 from math import gcd, lcm
-from time import time
 
 from dataclasses import dataclass, field
 
 from ..config.group_config import GroupConfig
 from ..config.stream_config import StreamConfig
-from ..transport.ZmqTransport import FlatBuffersReceiver
 
 @dataclass
 class GroupRuntime:
@@ -17,8 +15,7 @@ class GroupRuntime:
     stream_configs: dict[str, StreamConfig] = field(default_factory=dict)
     data_buffers: dict[str, list] = field(default_factory=dict)
     virtual_sensors: list = field(default_factory=list)
-    flatbuffers_receiver: FlatBuffersReceiver = field(default_factory=FlatBuffersReceiver)
-    
+  
     def register_worker(self, contexts: list[StreamConfig] | StreamConfig) -> None:
         """Register a worker belonging to this group, by passing its stream config."""
         if not isinstance(contexts, list):
@@ -35,6 +32,13 @@ class GroupRuntime:
 
             self.stream_configs[source_name] = context
             self.data_buffers[source_name] = []
+
+    def handle_worker_batch(self, batch: dict) -> None:
+        source_name = batch["source_name"]
+
+        self.add_data(source_name, batch)
+        if self.is_window_ready():
+            self.process_virtual_sensors()
 
     def add_data(self, source_name: str, data) -> None:
         """Add data received from a worker to its group buffer."""

@@ -1,32 +1,27 @@
-import json
-import time
+import traceback
 
 import zmq
 
 from .runtime_manager import RuntimeManager
 from ..transport.discovery import create_discovery_socket
 
-runtime_manager = RuntimeManager()
-
 def start_manager(port: int = 5555):
     context = zmq.Context()
     discovery = create_discovery_socket(context, port)
-    print("[MANAGER] Waiting for a package through the discovery socket.")
-    
-    while True:
-        try:
-            try:
-                msg = discovery.recv_json()
-            except zmq.Again:
-                continue
-            except (zmq.ZMQError, ValueError, json.JSONDecodeError) as recv_err:
-                print(f"--- [ERROR] Failed to receive or decode message: {recv_err}")
-                discovery.send_json({"status": "error", "message": "Invalid JSON framing"})
 
-            runtime_manager.register(discovery, msg)
+    runtime_manager = RuntimeManager(discovery)
 
-        except Exception as e:
-            print(f"--- [ERROR] Unexpected exception in manager loop: {e}")
-            discovery.send_json({"status": "error", "message": "Manager internal loop exception"})
-            
-            time.sleep(1)
+    print("[MANAGER] Waiting for messages.")
+
+    try:
+        runtime_manager.run()
+    except KeyboardInterrupt:
+        print("[MANAGER] Keyboard interrupt received.")
+
+    except Exception as e:
+        print(f"[MANAGER] FATAL EXCEPTION: {e}")
+        traceback.print_exc()
+
+    finally:
+        print("[MANAGER] Entering cleanup...")
+        runtime_manager.shutdown_handler()

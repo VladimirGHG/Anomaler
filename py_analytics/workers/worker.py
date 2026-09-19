@@ -10,8 +10,9 @@ import numpy as np
 from ..models.base import Strategy
 from ..config.worker_context import WorkerContext
 from ..models.factory import create_strategy
-from ..transport.ZmqTransport import FlatBuffersSender
-from ...serialization.generated.python.Anomaler.Serialization import TelemetryBatch, TelemetryMessage
+from ..serialization.generated.python.Anomaler.Serialization import TelemetryBatch
+from ..transport.ZmqTransport.FlatBuffersSender import FlatBuffersSender
+from ..serialization.generated.python.Anomaler.Serialization import TelemetryMessage
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTER_DIR = os.path.dirname(BASE_DIR)
@@ -20,7 +21,8 @@ MODELS_DIR = os.path.join(OUTER_DIR, "models_saved")
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
     def __init__(self, worker_config: WorkerContext, group_runtime_port: int, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
-        self_group_config = worker_config.group_runtime
+        self_group_config = worker_config.group_runtime.config
+        self._stream_config = worker_config.stream_config
 
         self.communication_host = self_group_config.communication_host
         self.pca_n_timestamps = self_group_config.pca_n_timestamps
@@ -93,17 +95,7 @@ class ZMQWorker:
                 for packet in batch_of_packets:
                     all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
 
-                telemetry_batch = TelemetryBatch.TelemetryBatchT()
-
-                telemetry_batch.datapoints = [
-                    TelemetryMessage.TelemetryMessageT(
-                        timestamp=timestamp,
-                        value=value
-                    )
-                    for timestamp, value in all_new_values.items()
-                ]
-                
-                self.flatBuffersSender.send(telemetry_batch)
+                self.flatBuffersSender.send(self._stream_config.source_name, [{"timestamp": ts, "value": val} for ts, val in all_new_values.items()])
 
                 if self.strategy == None:
                     print(f"--- [INFO] No strategy provided. Sending the batch {packet['ID']} to the virtual sensor.")
@@ -195,7 +187,7 @@ class ZMQWorker:
     def _decode_flatbuffer(self, raw: bytes):
         """Decode a FlatBuffers TelemetryBatch from raw bytes by dynamically finding the vector field."""
         try:
-            from ...serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
+            from ..serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
             batch = tb.TelemetryBatch.GetRootAs(raw, 0)
             
             methods = dir(batch)

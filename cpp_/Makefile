@@ -17,7 +17,7 @@ INC = -I./include \
 LIB = -L$(VCPKG_LIB) $(BREW_LIB) -lzmq -lCLI11 -lcserialport -lyaml-cpp -framework CoreFoundation -framework IOKit
 CXXFLAGS = -std=c++17 $(INC) -Wall
 
-SCHEMA = schema/telemetry.fbs
+SCHEMA = ../py_analytics/serialization/schemas/telemetry.fbs
 GEN_HEADER = include/telemetry_generated.h
 
 SRC = src/main.cpp \

@@ -7,7 +7,7 @@ class GroupConfig:
     connections: list[str]
     pca_n_timestamps: int
     communication_host: str
-    communication_port_range: list[int]
+    communication_port: int
 
     @classmethod
     def from_dict(cls, data: dict) -> "GroupConfig":
@@ -19,4 +19,4 @@ class GroupConfig:
             connections=virtual_sensor.get("connections", []),
             pca_n_timestamps=virtual_sensor.get("pca_n_timestamps", 10),
             communication_host=communication.get("host", "127.0.0.1"),
-            communication_port_range=communication.get("port_range", [5560, 5565]))
+            communication_port=communication.get("port", 5560))
