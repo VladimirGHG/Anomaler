@@ -1,38 +1,42 @@
 import flatbuffers
 from datetime import datetime
 
-from py_analytics.serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
+from py_analytics.serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb, TelemetryMessage as tm
+
 
 class FlatBuffersSender:
     def __init__(self, zmq_socket):
         self.zmq_socket = zmq_socket
         
-    def send(self, telemetry_batch: tb.TelemetryBatchT):
+    def send(self, source_name: str, datapoints: list[dict]):
         """Serialize a TelemetryBatch to FlatBuffers and send it over the ZMQ socket."""
+        telemetry_batch = self._create_batch(source_name, datapoints)
         serialized_bytes = self.serialize(telemetry_batch)
 
         self.zmq_socket.send(serialized_bytes)
+        print(f"--- [INFO] Sent {len(datapoints)} datapoints over ZMQ socket.")
 
-    def serialize(self, telemetry_batch: tb.TelemetryBatchT):
-        """Serialize a TelemetryBatch to FlatBuffers and return the raw bytes."""
-        builder = flatbuffers.Builder(1024)
+    def _create_batch(self, source_name: str, datapoints: list[dict]) -> tb.TelemetryBatchT:
+        batch = tb.TelemetryBatchT()
+        batch.sourceName = source_name
 
-        for datapoint in telemetry_batch.datapoints:
-            datapoint.timestamp = self._datetime_to_timestamp(datapoint.timestamp)
+        batch.datapoints = [
+            tm.TelemetryMessageT(
+                timestamp=self._datetime_to_timestamp(point["timestamp"]),
+                value=point["value"],
+            ) for point in datapoints
+        ]
 
-        telemetry_batch_offset = telemetry_batch.Pack(builder)
-        builder.Finish(telemetry_batch_offset)
-
-        return builder.Output()
+        return batch
 
     @staticmethod
-    def _datetime_to_timestamp(timestamp: datetime | int) -> int:
-        if isinstance(timestamp, datetime):
-            return int(timestamp.timestamp() * 1000)
+    def _datetime_to_timestamp(timestamp: datetime) -> int:
+        return int(timestamp.timestamp() * 1000)
 
-        if isinstance(timestamp, int):
-            return timestamp
+    def serialize(self, telemetry_batch: tb.TelemetryBatchT) -> bytes:
+        builder = flatbuffers.Builder(1024)
 
-        raise TypeError(
-            f"Unsupported timestamp type: {type(timestamp).__name__}"
-        )
+        offset = telemetry_batch.Pack(builder)
+        builder.Finish(offset)
+
+        return builder.Output()

@@ -13,7 +13,11 @@ class FlatBuffersReceiver:
         try:
             from py_analytics.serialization.generated.python.Anomaler.Serialization import TelemetryBatch as tb
             batch = tb.TelemetryBatch.GetRootAs(raw, 0)
-            
+
+            source_name = batch.SourceName()
+            if isinstance(source_name, bytes):
+                source_name = source_name.decode("utf-8")
+
             methods = dir(batch)
             vector_base = None
             for kw in ["Messages", "Datapoints", "Samples", "Frames", "Data"]:
@@ -41,12 +45,13 @@ class FlatBuffersReceiver:
             for i in range(num_elements):
                 msg = vector_func(i)
                 datapoints.append({
-                    "timestamp": datetime.fromtimestamp(msg.Timestamp()).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "timestamp": datetime.fromtimestamp(msg.Timestamp() / 1000).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "value": msg.Value()
                 })
             
             if datapoints:
-                return {"datapoints": datapoints}
+                return {"source_name": source_name, "datapoints": datapoints}
+            
         except Exception as e:
             if e.__class__.__name__ == "ImportError":
                 print(f"[DEBUG CRASH] Flatbuffer import failed: {e}. \

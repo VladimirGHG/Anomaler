@@ -9,52 +9,119 @@ from .group_runtime import GroupRuntime
 
 from ..config.worker_context import WorkerContext
 from ..workers.process import run_model_worker_process
+from ..transport.ZmqTransport.FlatBuffersReceiver import FlatBuffersReceiver
 
 class RuntimeManager:
-    def __init__(self):
+    def __init__(self, discovery_socket):
+
+        self.discovery_socket = discovery_socket
+        self.groups: dict[str, GroupRuntime] = {}
+        self.group_sockets: dict[str, zmq.Socket] = {}
+        self.socket_to_group: dict[zmq.Socket, GroupRuntime] = {}
+        self.socket_to_receiver: dict[zmq.Socket, FlatBuffersReceiver] = {}
+
         self.active_workers = []
         self.groups: dict[str, GroupRuntime] = {}
         self._contexts: dict[str, WorkerContext] = {}
 
-        self.context = zmq.Context()
-
-        self.group_socket = self.context.socket(zmq.PULL)
-        self.group_socket.bind("tcp://127.0.0.1:5550")
-
+        self.zmqcontext = zmq.Context()
         self.poller = zmq.Poller()
-        self.poller.register(self.group_socket, zmq.POLLIN)
+
+        self.poller.register(self.discovery_socket, zmq.POLLIN)
 
         self.running = True
 
-    def register(self, discovery_socket, msg):
+    def run(self):
+        while self.running:
+            events = dict(self.poller.poll())
+            print(f"[MANAGER] Poller events: {events}")
+
+            for socket, event in events.items():
+                print(f"[MANAGER] Received event on socket: {socket}, event type: {event}")
+                if not (event & zmq.POLLIN):
+                    continue
+
+                if socket is self.discovery_socket:
+                    print("[MANAGER] About to receive discovery message")
+
+                    try:
+                        msg = socket.recv_json(zmq.DONTWAIT)
+                        print(f"[MANAGER] Received message: {msg}")
+                    except zmq.Again:
+                        print("[MANAGER] Socket became unreadable")
+                        continue
+
+                    self.register(msg)
+                    continue
+
+                if socket in self.socket_to_group:
+                    group = self.socket_to_group.get(socket)
+
+                    if group is None:
+                        continue
+
+                if socket in self.socket_to_receiver:
+                    receiver = self.socket_to_receiver.get(socket)
+
+                    if group is None or receiver is None:
+                        print("[MANAGER] Unknown socket")
+                        continue
+
+                    batch = receiver.receive()
+                    print(f"[MANAGER] Received batch from group '{group.group_id}': {batch}")
+                    
+                    if batch is not None:
+                        group.handle_worker_batch(batch)
+
+    def register(self, msg):
+        self.poller.register(self.discovery_socket, zmq.POLLIN)
+
         action = msg.get('action')
         print(f"--- [MANAGER] Received action '{action}' with message: {msg}")
         if action == "register_stream":
-            self._register_stream(discovery_socket, msg)
+            self._register_stream(msg)
         elif action == "register_group":
-            self._register_group(discovery_socket, msg)
+            self._register_group(msg)
         else:
             raise NameError(f"No '{action}' action found!")
 
-    def _register_group(self, discovery_socket, msg):
+    def _register_group(self, msg):
         try:
-            if isinstance(msg, dict):
-                group_id = msg.get('group_id')
-                config = GroupConfig.from_dict(msg)
-                self.groups[group_id] = GroupRuntime(group_id, config)
+            if not isinstance(msg, dict):
+                raise TypeError("Invalid message format")
 
-            try:
-                discovery_socket.send_json({"status": "group_registered", "id": group_id})
-                print(f"--- [MANAGER] Registered group {group_id}")
-            except zmq.ZMQError as send_err:
-                print(f"--- [ERROR] Failed to send group registration message: {send_err}")
-                return 1
+            group_id = msg.get("group_id")
+            config = GroupConfig.from_dict(msg)
+            
+            if group_id in self.groups:
+                raise ValueError(f"Group '{group_id}' is already registered")
+
+            group = GroupRuntime(group_id=group_id, config=config)
+
+            group_socket = self.zmqcontext.socket(zmq.PULL)
+            group_socket.bind(f"tcp://{config.communication_host}:{config.communication_port}")
+
+            self.groups[group_id] = group
+            self.poller.register(group_socket, zmq.POLLIN)
+            self.socket_to_group[group_socket] = group
+            self.group_sockets[group_id] = group_socket
+
+            receiver = FlatBuffersReceiver(group_socket)
+            self.socket_to_receiver[group_socket] = receiver
+
+            self.discovery_socket.send_json({
+                "status": "group_registered",
+                "id": group_id,
+                "port": config.communication_port,
+            })
+
+            print(f"--- [MANAGER] Registered group {group_id}")
 
         except (ValueError, TypeError) as validation_err:
             print(f"--- [ERROR] Validation error: {validation_err}")
-            discovery_socket.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
+            self.discovery_socket.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
 
-    def _register_stream(self, discovery_socket, msg):
+    def _register_stream(self, msg):
         try:
             stream_port = None
             strategy = None
@@ -78,7 +145,7 @@ class RuntimeManager:
 
         except (ValueError, TypeError) as validation_err:
             print(f"--- [ERROR] Validation error: {validation_err}")
-            discovery_socket.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
+            self.discovery_socket.send_json({"status": "error", "message": f"Validation failed: {validation_err}"})
 
         try:
             group_runtime_port = self.groups[group_id].config.communication_port
@@ -94,16 +161,16 @@ class RuntimeManager:
             
         except Exception as proc_err:
             print(f"--- [ERROR] Failed to start worker process: {proc_err}")
-            discovery_socket.send_json({"status": "error", "message": f"Failed to start worker: {proc_err}"})
+            self.discovery_socket.send_json({"status": "error", "message": f"Failed to start worker: {proc_err}"})
 
         try:
-            discovery_socket.send_json({"status": "worker_spawned", "port": stream_port})
+            self.discovery_socket.send_json({"status": "worker_spawned", "port": stream_port})
             print(f"--- [MANAGER] Started {strategy} worker for port {stream_port}")
         except zmq.ZMQError as send_err:
             print(f"--- [ERROR] Failed to send confirmation message: {send_err}")
 
-    def shutdown_handler(self, sig: int, frame):
-        print(f"--- [SYSTEM] Termination signal received. Cleaning up {len(self._active_workers)} workers...\n")
+    def shutdown_handler(self):
+        print(f"--- [SYSTEM] Termination signal received. Cleaning up {len(self.active_workers)} workers...\n")
         for p in self.active_workers:
             try:
                 if p.is_alive():

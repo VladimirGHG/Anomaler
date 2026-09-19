@@ -6,6 +6,7 @@ table TelemetryMessage {
 }
 
 table TelemetryBatch {
+    source_name: string;
     datapoints: [TelemetryMessage];
 }
 
