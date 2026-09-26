@@ -8,7 +8,7 @@ groups:
         - source3
         - source4
       pca:
-        n_timestamps: 2000
+        n_timestamps: 120
 
     synchronization: # Synchronization settings for the group_runtime.
       frequency: null

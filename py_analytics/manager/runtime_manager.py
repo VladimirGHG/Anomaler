@@ -9,7 +9,7 @@ from .group_runtime import GroupRuntime
 
 from ..config.worker_context import WorkerContext
 from ..workers.process import run_model_worker_process
-from ..transport.ZmqTransport.FlatBuffersReceiver import FlatBuffersReceiver
+from ..transport.FlatBuffers.FlatBuffersReceiver import FlatBuffersReceiver
 
 class RuntimeManager:
     def __init__(self, discovery_socket):
@@ -21,7 +21,6 @@ class RuntimeManager:
         self.socket_to_receiver: dict[zmq.Socket, FlatBuffersReceiver] = {}
 
         self.active_workers = []
-        self.groups: dict[str, GroupRuntime] = {}
         self._contexts: dict[str, WorkerContext] = {}
 
         self.zmqcontext = zmq.Context()
@@ -37,13 +36,17 @@ class RuntimeManager:
             print(f"[MANAGER] Poller events: {events}")
 
             for socket, event in events.items():
-                print(f"[MANAGER] Received event on socket: {socket}, event type: {event}")
+                print(
+                    f"[MANAGER] Event: socket={socket}, "
+                    f"event={event}, "
+                    f"is_discovery={socket is self.discovery_socket}, "
+                    f"is_group={socket in self.socket_to_group}"
+                )
+
                 if not (event & zmq.POLLIN):
                     continue
 
                 if socket is self.discovery_socket:
-                    print("[MANAGER] About to receive discovery message")
-
                     try:
                         msg = socket.recv_json(zmq.DONTWAIT)
                         print(f"[MANAGER] Received message: {msg}")
@@ -54,21 +57,27 @@ class RuntimeManager:
                     self.register(msg)
                     continue
 
-                if socket in self.socket_to_group:
-                    group = self.socket_to_group.get(socket)
+                # if socket in self.socket_to_group:
+                #     group = self.socket_to_group.get(socket)
 
-                    if group is None:
-                        continue
+                #     if group is None:
+                #         continue
 
                 if socket in self.socket_to_receiver:
+                    group = self.socket_to_group[socket]
                     receiver = self.socket_to_receiver.get(socket)
 
-                    if group is None or receiver is None:
-                        print("[MANAGER] Unknown socket")
-                        continue
+                    # print(
+                    #     f"[MANAGER] GROUP SOCKET READABLE: "
+                    #     f"group={group.group_id}"
+                    # )
 
                     batch = receiver.receive()
-                    print(f"[MANAGER] Received batch from group '{group.group_id}': {batch}")
+
+                    # print(
+                    #     f"[MANAGER] Received batch from "
+                    #     f"group '{group.group_id}': {batch}"
+                    # )
                     
                     if batch is not None:
                         group.handle_worker_batch(batch)
@@ -77,7 +86,7 @@ class RuntimeManager:
         self.poller.register(self.discovery_socket, zmq.POLLIN)
 
         action = msg.get('action')
-        print(f"--- [MANAGER] Received action '{action}' with message: {msg}")
+        # print(f"--- [MANAGER] Received action '{action}' with message: {msg}")
         if action == "register_stream":
             self._register_stream(msg)
         elif action == "register_group":
@@ -101,8 +110,24 @@ class RuntimeManager:
             group_socket = self.zmqcontext.socket(zmq.PULL)
             group_socket.bind(f"tcp://{config.communication_host}:{config.communication_port}")
 
+            # print(
+            #     f"[MANAGER] PULL binding to "
+            #     f"tcp://{config.communication_host}:{config.communication_port}"
+            # )
+
             self.groups[group_id] = group
             self.poller.register(group_socket, zmq.POLLIN)
+
+            # print(
+            #     f"[MANAGER] Registered group socket: {group_socket}, "
+            #     f"FD={group_socket.getsockopt(zmq.FD)}"
+            # )
+
+            # print(
+            #     f"[MANAGER] Poller registrations: "
+            #     f"{self.poller._map}"
+            # )
+
             self.socket_to_group[group_socket] = group
             self.group_sockets[group_id] = group_socket
 
@@ -127,7 +152,6 @@ class RuntimeManager:
             strategy = None
             if isinstance(msg, dict):
                 group_id = msg.get('group_id', None)
-                print(msg)
                 _stream_config = StreamConfig.from_dict(msg)
 
                 self.groups[group_id].register_worker(_stream_config)
