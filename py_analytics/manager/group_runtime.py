@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 from ..config.group_config import GroupConfig
 from ..config.stream_config import StreamConfig
+from ..data.group_data_storage import GroupDataStorage
+from ..virtual_sensors.relationship.relationship_measure import Relator
 
 @dataclass
 class GroupRuntime:
@@ -13,9 +15,17 @@ class GroupRuntime:
     config: GroupConfig
 
     stream_configs: dict[str, StreamConfig] = field(default_factory=dict)
-    data_buffers: dict[str, list] = field(default_factory=dict)
+    data_storage: GroupDataStorage = field(default_factory=GroupDataStorage)
     virtual_sensors: list = field(default_factory=list)
-  
+
+    @property
+    def periods(self) -> list[float]:
+        return [config.frequency for config in self.stream_configs.values()]
+
+    @property
+    def common_sampling_period(self) -> float:
+        return self._common_sampling_period(self.periods)
+
     def register_worker(self, contexts: list[StreamConfig] | StreamConfig) -> None:
         """Register a worker belonging to this group, by passing its stream config."""
         if not isinstance(contexts, list):
@@ -31,12 +41,16 @@ class GroupRuntime:
                 )
 
             self.stream_configs[source_name] = context
-            self.data_buffers[source_name] = []
 
     def handle_worker_batch(self, batch: dict) -> None:
         source_name = batch["source_name"]
 
         self.add_data(source_name, batch)
+        print(f"RECEIVED BATCH FROM {source_name}")
+        if self.data_storage.get_source_data("source4"):
+            rel = Relator(self.config)
+            rel.prepare(data_sources=["source1", "source2"], data_storage=self.data_storage)
+
         if self.is_window_ready():
             self.process_virtual_sensors()
 
@@ -49,7 +63,7 @@ class GroupRuntime:
                 f"in group '{self.group_id}'."
             )
 
-        self.data_buffers[source_name].append(data)
+        self.data_storage.add_source_data(source_name, data)
 
     def is_window_ready(self) -> bool:
         """
@@ -64,7 +78,7 @@ class GroupRuntime:
             return False
 
         for source in required_sources:
-            if len(self.data_buffers[source]) < self.config.pca_n_timestamps:
+            if len(self.data_storage.get_source_data(source)) < self.config.pca_n_timestamps:
                 return False
 
         return True
@@ -75,7 +89,7 @@ class GroupRuntime:
         """
         pass
 
-    @classmethod
+    @staticmethod
     def _common_sampling_period(periods: list[float]) -> float:
         fractions = [Fraction(str(p)) for p in periods]
 

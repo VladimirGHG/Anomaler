@@ -11,7 +11,7 @@ from ..models.base import Strategy
 from ..config.worker_context import WorkerContext
 from ..models.factory import create_strategy
 from ..serialization.generated.python.Anomaler.Serialization import TelemetryBatch
-from ..transport.ZmqTransport.FlatBuffersSender import FlatBuffersSender
+from ..transport.FlatBuffers.FlatBuffersSender import FlatBuffersSender
 from ..serialization.generated.python.Anomaler.Serialization import TelemetryMessage
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,11 +21,11 @@ MODELS_DIR = os.path.join(OUTER_DIR, "models_saved")
 class ZMQWorker:
     """Worker process that receives data batches via ZeroMQ, processes them with the given anomaly detection strategy, and reports results."""
     def __init__(self, worker_config: WorkerContext, group_runtime_port: int, load_path: str = "", save_every: int = 15, max_snapshots: int = 10, log=True):
-        self_group_config = worker_config.group_runtime.config
+        self._group_config = worker_config.group_runtime.config
         self._stream_config = worker_config.stream_config
 
-        self.communication_host = self_group_config.communication_host
-        self.pca_n_timestamps = self_group_config.pca_n_timestamps
+        self.communication_host = self._group_config.communication_host
+        self.pca_n_timestamps = self._group_config.pca_n_timestamps
         self._n_timestamps = 0
         self.port = worker_config.stream_config.port
         self.serialization = worker_config.stream_config.serialization
@@ -35,9 +35,19 @@ class ZMQWorker:
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
         self.batch_id = 0
 
+        self.all_new_values = {}
+
+        # print(
+        #     f"[WORKER] PUSH connecting to "
+        #     f"tcp://{self.communication_host}:{group_runtime_port}"
+        # )
+
         group_runtime_sender = context.socket(zmq.PUSH)
         group_runtime_sender.connect(f"tcp://{self.communication_host}:{group_runtime_port}")
-        self.flatBuffersSender = FlatBuffersSender(group_runtime_sender)
+
+        self.flatBuffersSender = None
+        if self._stream_config.source_name in self._group_config.connections:
+            self.flatBuffersSender = FlatBuffersSender(group_runtime_sender)
 
         self.median = 0
         self.mad = 1 # MAD / Median Absolute Deviation
@@ -78,7 +88,7 @@ class ZMQWorker:
 
                         packet = self.func(raw)
                         if packet:
-                            print(packet)
+                            # print(packet)
                             batch_of_packets.append(packet)
                     except zmq.Again:
                         break # Queue is empty
@@ -91,18 +101,19 @@ class ZMQWorker:
                     continue
                 
 
-                all_new_values = {}
                 for packet in batch_of_packets:
-                    all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
+                    self.all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
 
-                self.flatBuffersSender.send(self._stream_config.source_name, [{"timestamp": ts, "value": val} for ts, val in all_new_values.items()])
+                if self.flatBuffersSender and len(self.all_new_values) >= self.pca_n_timestamps:
+                    self.flatBuffersSender.send(self._stream_config.source_name, [{"timestamp": ts, "value": val} for ts, val in self.all_new_values.items()])
+                    self.all_new_values = {}
 
                 if self.strategy == None:
                     print(f"--- [INFO] No strategy provided. Sending the batch {packet['ID']} to the virtual sensor.")
                     continue
                 else:
                     if self.strategy.name == "SKlearnIsolatedForest":
-                        if all_new_values:
+                        if self.all_new_values:
                             # Calculate the current median and MAD
                             self.get_median_mad(self.strategy.data_buffer)
                     
@@ -113,8 +124,8 @@ class ZMQWorker:
                         self.strategy.model = self.strategy.load_model(self.load_path)
                         
                     # If there are newly received data points process them and report the results.
-                    if all_new_values:
-                        results = self.strategy.process_batch(self.mad, self.median, all_new_values)
+                    if self.all_new_values:
+                        results = self.strategy.process_batch(self.mad, self.median, self.all_new_values)
                         self.report(results)
 
                     # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
