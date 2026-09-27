@@ -41,7 +41,7 @@ groups:
       source3:
         source_type: outlier
         port: 5557
-        frequency: 0.1
+        frequency: 0.05
         ml_model: None
         data_mode: default
         serialization: json
@@ -51,9 +51,9 @@ groups:
       source4:
         source_type: random
         port: 5558
-        frequency: 0.1
+        frequency: 0.05
         ml_model: None
         data_mode: default
         serialization: json
-        batch_size: 20
+        batch_size: 40
         verbose: false

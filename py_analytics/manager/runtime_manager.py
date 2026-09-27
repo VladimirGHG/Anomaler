@@ -74,10 +74,10 @@ class RuntimeManager:
 
                     batch = receiver.receive()
 
-                    # print(
-                    #     f"[MANAGER] Received batch from "
-                    #     f"group '{group.group_id}': {batch}"
-                    # )
+                    print(
+                        f"[MANAGER] Received batch from "
+                        f"group '{group.group_id}': {batch}"
+                    )
                     
                     if batch is not None:
                         group.handle_worker_batch(batch)
