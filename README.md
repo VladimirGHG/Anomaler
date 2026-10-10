@@ -52,9 +52,9 @@ For MACOS and Windows, after installing the required libraries, the remaining se
   ```
 
 ### Generating the Flatbuffers' script for Python side
-* Finally, basd on the data structures defined in th .fbs file, the Python script for those should be generated. Run from the cpp_ folder:\
+* Finally, based on the data structures defined in th .fbs file, the Python script for those should be generated. Locate the downloaded tools/flatbuffers/flatc compiler in the vcpkg/ and run the command:
   ```
-  ./vcpkg/installed/arm64-osx/tools/flatbuffers/flatc \
+  ./path/to/flatc \
     --python \
     --gen-object-api \
     -o ../py_analytics/serialization/generated/python \
@@ -78,7 +78,7 @@ For MACOS and Windows, after installing the required libraries, the remaining se
 ### Note
 *Since in the system the basic River and scikit-learn models are wrapped by the system's classes, to integrate those with the cpp part, those classes are going to be referred to as Strategies throughout this documentation.*
 
-Anomaler consists of two three parts: 
+Anomaler consists of three parts: 
 * The *config* part, used to define data streams and their groups.
   * *group_config.yaml* is the main configurational file, where the user can define groups and streams. The YAML file will be parsed and all the instances mentioned in it will be initialized.
 
