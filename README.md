@@ -1,7 +1,15 @@
 # Anomaler
 
 ## Overview
-Anomaler is a C++/Python system for streaming structured data to anomaly detection models and catching those anomalies. It supports both training and real-time evaluation, enabling efficient end-to-end anomaly detection across arbitrary data types. The system is designed to be modular, flexible, and compatible with ML pipelines.
+Anomaler is a C++/Python system for streaming structured data to anomaly detection models and catching those anomalies. It supports both training and real-time evaluation, enabling efficient end-to-end anomaly detection across arbitrary data types. Virtual sensor creation is under development, with the aim of evaluating its potential for temporary physical-sensor substitution. The system is designed to be modular, flexible, and compatible with ML pipelines.
+
+## Research Question
+How can the reliability of virtual sensors constructed from industrial sensors' data streams be evaluated and improved for real-time anomaly detection, and to what extent can these virtual sensors substitute for physical sensors during periods of downtime?
+
+## Research Objectives
+Anomaler investigates methods for evaluating and improving the reliability of virtual sensors derived from multiple industrial sensor streams. The main focus of the project is to validate statistical relationships between sensors' data streams, assess how noisy or missing measurements and changing conditions may affect virtual sensors, and whether temporary virtual sensor substitution can help maintain monitoring continuity and support real-time anomaly detection while physical sensors are unavailable.
+
+The overall objective is to determine the conditions under which virtual sensors can serve as reliable temporary alternatives to physical sensors, while identifying their limitations and evaluating their potential operational benefits in industrial environments.
 
 ## Prerequisites
 To build and run Anomaler, ensure the following dependencies are installed:
@@ -64,7 +72,7 @@ For MACOS and Windows, after installing the required libraries, the remaining se
 
 **Hardware Abstraction Layer**: Easy sensor connection to the system using prebuilt abstract classes and add settings specifically to that sensor.
 
-**Virtual Sensor Creation Support**: Sensor replication, allowing to reliably replace the broken sensors for a limited time, until it gets replaced.
+**Virtual Sensor Creation Support (UNDER DEVELOPMENT)**: Sensor replication, allowing to reliably replace the broken physical sensors for a limited time, until those get replaced.
 ## Structure
 
 ### Note
