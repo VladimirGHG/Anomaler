@@ -49,11 +49,17 @@ class GroupRuntime:
 
         self.data_storage.add_source_data(batch["source_name"], batch["datapoints"])
 
-        required_sources = {
-            "source1",
-            "source2",
-            "source4",
-        }
+        required_sources = list(self.config.connections or [])
+        if len(required_sources) < 2:
+            print("[RELATIONSHIP] At least two configured sources are required")
+            return
+
+        window_size = max(1, self.config.pca_n_timestamps)
+        # Keep enough history for modest arrival skew, but cap memory usage.
+        max_points = window_size * 4
+        source_points = self.data_storage.data[batch["source_name"]]
+        if len(source_points) > max_points:
+            self.data_storage.data[batch["source_name"]] = source_points[-max_points:]
 
         print(
             f"[RELATIONSHIP] Available sources: "
@@ -75,11 +81,13 @@ class GroupRuntime:
                 f"{len(self.data_storage.data[source])} points"
             )
 
-        if not all(
-            len(self.data_storage.data[source]) >= 120
-            for source in required_sources
-        ):
-            print("[RELATIONSHIP] Not enough data yet")
+        prepared = rel.prepare(required_sources, self.data_storage)
+        aligned_count = min((len(series) for series in prepared.values()), default=0)
+        if aligned_count < window_size:
+            print(
+                f"[RELATIONSHIP] Waiting for aligned window: "
+                f"{aligned_count}/{window_size} shared timestamps"
+            )
             return
 
         print("[RELATIONSHIP] Calling correlation")

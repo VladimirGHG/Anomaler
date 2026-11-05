@@ -11,7 +11,8 @@ groups:
         n_timestamps: 120
 
     synchronization: # Synchronization settings for the group_runtime.
-      frequency: null
+      frequency: 0.05 # Shared alignment grid period in seconds.
+      alignment_tolerance: 0.02 # Maximum distance from a grid point, in seconds.
 
     communication: # Communication settings for the group_runtime and its workers.
       host: "127.0.0.1"

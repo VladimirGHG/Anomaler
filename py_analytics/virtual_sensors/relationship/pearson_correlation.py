@@ -54,7 +54,7 @@ class PearsonCorrelation(RelationshipMeasure):
         
         for (source_a, series_a), (source_b, series_b) in combinations(data.items(), 2):
             correlation, p_value = pearsonr(series_a.values, series_b.values)
-
+            print(f"STREAMSERIES: {series_a.values}, {series_b.values}")
             results[(source_a, source_b)] = {"correlation": correlation, "p_value": p_value}
 
         return results

@@ -16,6 +16,9 @@ class StreamSeries:
     @property
     def timestamps(self):
         return [point["timestamp"] for point in self.datapoints]
+
+    def __len__(self):
+        return len(self.values)
     
     def __str__(self):
         return f"{self.datapoints}"
