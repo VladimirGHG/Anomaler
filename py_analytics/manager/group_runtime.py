@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from ..config.group_config import GroupConfig
 from ..config.stream_config import StreamConfig
 from ..data.group_data_storage import GroupDataStorage
-from ..virtual_sensors.relationship.relationship_measure import Relator
+from ..virtual_sensors.relationship.spearman_correlation import SpearmanCorrelation
+from ..virtual_sensors.relationship.pearson_correlation import PearsonCorrelation
 
 @dataclass
 class GroupRuntime:
@@ -42,17 +43,64 @@ class GroupRuntime:
 
             self.stream_configs[source_name] = context
 
-    def handle_worker_batch(self, batch: dict) -> None:
-        source_name = batch["source_name"]
+    def handle_worker_batch(self, batch):
+        rel = PearsonCorrelation(self.config)
+        print(f"[RELATIONSHIP] Received {batch["source_name"]}")
 
-        self.add_data(source_name, batch)
-        print(f"RECEIVED BATCH FROM {source_name}")
-        if self.data_storage.get_source_data("source4"):
-            rel = Relator(self.config)
-            rel.prepare(data_sources=["source1", "source2"], data_storage=self.data_storage)
+        self.data_storage.add_source_data(batch["source_name"], batch["datapoints"])
 
-        if self.is_window_ready():
-            self.process_virtual_sensors()
+        required_sources = list(self.config.connections or [])
+        if len(required_sources) < 2:
+            print("[RELATIONSHIP] At least two configured sources are required")
+            return
+
+        window_size = max(1, self.config.pca_n_timestamps)
+        # Keep enough history for modest arrival skew, but cap memory usage.
+        max_points = window_size * 4
+        source_points = self.data_storage.data[batch["source_name"]]
+        if len(source_points) > max_points:
+            self.data_storage.data[batch["source_name"]] = source_points[-max_points:]
+
+        print(
+            f"[RELATIONSHIP] Available sources: "
+            f"{set(self.data_storage.data.keys())}"
+        )
+
+        if not all(
+            source in self.data_storage.data
+            for source in required_sources
+        ):
+            print("[RELATIONSHIP] Waiting for all sources")
+            return
+
+        print("[RELATIONSHIP] All required sources available")
+
+        for source in required_sources:
+            print(
+                f"[RELATIONSHIP] {source}: "
+                f"{len(self.data_storage.data[source])} points"
+            )
+
+        prepared = rel.prepare(required_sources, self.data_storage)
+        aligned_count = min((len(series) for series in prepared.values()), default=0)
+        if aligned_count < window_size:
+            print(
+                f"[RELATIONSHIP] Waiting for aligned window: "
+                f"{aligned_count}/{window_size} shared timestamps"
+            )
+            return
+
+        print("[RELATIONSHIP] Calling correlation")
+
+        result = rel.compute(
+            data_sources=list(required_sources),
+            data_storage=self.data_storage,
+            method="pairwise",
+        )
+
+        print(f"[RELATIONSHIP] RESULT: {result}")
+
+        return result
 
     def add_data(self, source_name: str, data) -> None:
         """Add data received from a worker to its group buffer."""
