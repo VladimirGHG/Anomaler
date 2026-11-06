@@ -86,11 +86,13 @@ class Strategy(ABC):
         metadata = bundle.get("metadata", {})
         model_obj = bundle.get("model_state")
         model_obj.parent_hash = metadata.get("current_hash", "None")
-        print(f"--- Loading Model ---")
-        print(f"Metadata: {metadata}")
+        model_obj.logger.info(
+            f"Loaded model v{metadata.get('version', 'unknown')} "
+            f"(saved {metadata.get('timestamp', 'unknown')})"
+        )
         actual_hash = model_obj._generate_config_hash()
         if actual_hash != metadata.get("current_hash"):
-            print("[WARNING] Config hash mismatch! Model might have been modified.")
+            model_obj.logger.warning("Config hash mismatch; model configuration may have changed")
             
         return model_obj
     

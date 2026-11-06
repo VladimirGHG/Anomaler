@@ -18,7 +18,13 @@ class SpearmanCorrelation(RelationshipMeasure):
     def __init__(self, group_config):
         super().__init__(group_config=group_config)
 
-    def compute(self, data_sources: list[str], data_storage: GroupDataStorage, method) -> float:
+    def compute(
+        self,
+        data_sources: list[str],
+        data_storage: GroupDataStorage,
+        method,
+        prepared_data: dict[str, StreamSeries] | None = None,
+    ) -> float:
         """
         Compute the Spearman rank correlation coefficient between two variables.
 
@@ -31,16 +37,8 @@ class SpearmanCorrelation(RelationshipMeasure):
             float: Spearman rank correlation coefficient.
         """
 
-        prepared_data: dict[str, StreamSeries] = self.prepare(data_sources, data_storage)
-        for name, series in prepared_data.items():
-            
-            print(
-                name,
-                len(series.values),
-                series.timestamps[0],
-                series.timestamps[-1],
-            )
-
+        if prepared_data is None:
+            prepared_data = self.prepare(data_sources, data_storage)
         if method == "pairwise":
             return self._compute_pairwise(prepared_data)
 

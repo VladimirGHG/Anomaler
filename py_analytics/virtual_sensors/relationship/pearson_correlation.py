@@ -18,7 +18,13 @@ class PearsonCorrelation(RelationshipMeasure):
     def __init__(self, group_config):
         super().__init__(group_config=group_config)
 
-    def compute(self, data_sources: list[str], data_storage: GroupDataStorage, method) -> float:
+    def compute(
+        self,
+        data_sources: list[str],
+        data_storage: GroupDataStorage,
+        method,
+        prepared_data: dict[str, StreamSeries] | None = None,
+    ) -> float:
         """
         Compute the Spearman rank correlation coefficient between two variables.
 
@@ -31,15 +37,8 @@ class PearsonCorrelation(RelationshipMeasure):
             float: Pearson correlation coefficient.
         """
 
-        prepared_data: dict[str, StreamSeries] = self.prepare(data_sources, data_storage)
-        for name, series in prepared_data.items():
-            
-            print(
-                name,
-                len(series.values),
-                series.timestamps[0],
-                series.timestamps[-1],
-            )
+        if prepared_data is None:
+            prepared_data = self.prepare(data_sources, data_storage)
 
         if method == "pairwise":
             return self._compute_pairwise(prepared_data)
@@ -54,7 +53,6 @@ class PearsonCorrelation(RelationshipMeasure):
         
         for (source_a, series_a), (source_b, series_b) in combinations(data.items(), 2):
             correlation, p_value = pearsonr(series_a.values, series_b.values)
-            print(f"STREAMSERIES: {series_a.values}, {series_b.values}")
             results[(source_a, source_b)] = {"correlation": correlation, "p_value": p_value}
 
         return results

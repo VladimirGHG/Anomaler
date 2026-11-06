@@ -1,5 +1,5 @@
 import os
-import sys
+import logging
 import time
 import json
 from datetime import datetime
@@ -10,6 +10,8 @@ import numpy as np
 from ..models.base import Strategy
 from ..config.worker_context import WorkerContext
 from ..models.factory import create_strategy
+from ..model_logger import ModelLogger
+from ..sensor_logger import SensorLogger
 from ..serialization.generated.python.Anomaler.Serialization import TelemetryBatch
 from ..transport.FlatBuffers.FlatBuffersSender import FlatBuffersSender
 from ..serialization.generated.python.Anomaler.Serialization import TelemetryMessage
@@ -60,6 +62,15 @@ class ZMQWorker:
 
         folder = "./py_analytics/models"
         self.strategy = create_strategy(worker_config.stream_config.strategy, folder)
+        self.source_logger = SensorLogger(
+            worker_config.stream_config.source_name,
+            self.strategy.name if self.strategy is not None else None,
+        )
+        if self.strategy is not None:
+            sensor_name = worker_config.stream_config.source_name
+            self.strategy.logger = ModelLogger(
+                f"{sensor_name}_{self.strategy.name}_v{self.strategy.version}_{self.strategy.config_hash[:8]}"
+            )
 
         if self.serialization.lower() not in ["json", "flatbuffers"]:
             raise ValueError(f"Unsupported serialization protocol: {self.serialization}. Supported: 'json', 'flatbuffers'")
@@ -93,27 +104,39 @@ class ZMQWorker:
                     except zmq.Again:
                         break # Queue is empty
                 
-                if self.batch_id == packet["ID"]:
-                    print(f"--- [INFO] Batch with ID {packet['ID']} received.")
+                new_values = {}
+                batch_ids = {}
+                for received_packet in batch_of_packets:
+                    received_id = received_packet.get("ID", self.batch_id)
+                    if received_id != self.batch_id:
+                        message = f"Batch sequence gap: received {received_id}, expected {self.batch_id}"
+                        if self.strategy is not None:
+                            self.strategy.logger.warning(message)
+                        else:
+                            logging.getLogger(__name__).warning(message)
+                        continue
                     self.batch_id += 1
-                else:
-                    print(f"--- [INFO] Batch with ID {packet['ID']} received. Expected ID: {self.batch_id}.")
-                    continue
-                
+                    for datapoint in received_packet.get("datapoints", []):
+                        timestamp = datapoint["timestamp"]
+                        value = datapoint["value"]
+                        new_values[timestamp] = value
+                        batch_ids[timestamp] = received_id
+                        self.source_logger.log_datapoint(received_id, timestamp, value)
 
-                for packet in batch_of_packets:
-                    self.all_new_values.update({p["timestamp"]: p["value"] for p in packet["datapoints"]})
+                if not new_values:
+                    continue
+
+                self.all_new_values.update(new_values)
 
                 if self.flatBuffersSender and len(self.all_new_values) >= self.pca_n_timestamps:
                     self.flatBuffersSender.send(self._stream_config.source_name, [{"timestamp": ts, "value": val} for ts, val in self.all_new_values.items()])
                     self.all_new_values = {}
 
                 if self.strategy == None:
-                    print(f"--- [INFO] No strategy provided. Sending the batch {packet['ID']} to the virtual sensor.")
                     continue
                 else:
                     if self.strategy.name == "SKlearnIsolatedForest":
-                        if self.all_new_values:
+                        if new_values:
                             # Calculate the current median and MAD
                             self.get_median_mad(self.strategy.data_buffer)
                     
@@ -124,9 +147,9 @@ class ZMQWorker:
                         self.strategy.model = self.strategy.load_model(self.load_path)
                         
                     # If there are newly received data points process them and report the results.
-                    if self.all_new_values:
-                        results = self.strategy.process_batch(self.mad, self.median, self.all_new_values)
-                        self.report(results)
+                    if new_values:
+                        results = self.strategy.process_batch(self.mad, self.median, new_values)
+                        self.report(results, batch_ids)
 
                     # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
                     # Elif last snapshot was made more than SELF.SAVE_EVERY seconds ago, save it.
@@ -135,7 +158,9 @@ class ZMQWorker:
                     elif time.time() - self.strategy.last_save_time > self.save_every: # Save every X seconds 
                         if self.strategy.model_snapshot >= self.max_snapshots: # Keep only last Y snapshots
                             self.strategy.model_snapshot = 0
-                            print(f"--- [DISK] Reached max snapshots. Overwriting from {self.strategy.__str__()}_0.pkl")
+                            self.strategy.logger.info(
+                                f"Snapshot limit ({self.max_snapshots}) reached; rotating snapshots"
+                            )
 
                         os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
                         self.strategy.save_model(os.path.join(MODELS_DIR, self.strategy.name))
@@ -145,42 +170,46 @@ class ZMQWorker:
                     # if results:
                     #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
 
-    def report(self, results: list[dict]):
-        """Prints the results of the anomaly detection in a readable format."""
+    def report(self, results: list[dict], batch_ids: dict):
+        """Write anomaly events and concise model summaries to their logs."""
         if not results:
             return
 
         anomalies = [r for r in results if r.get("is_anomaly")]
-        last_val = results[-1].get("val")
         status = results[-1].get("status")
         if self.strategy.name == "SKlearnIsolatedForest": level = results[-1].get("anomaly_level", -1)
         elif self.strategy.name == "RiverHalfSpaceTrees": level = results[-1].get("score", -1)
         else: level = -1
         
         if status == "WARMUP":
-            sys.stdout.write(f"\r--- [WARMUP] Processed {len(results)} points. Latest: {last_val}")
+            self.strategy.logger.info(f"Warmup: processed {len(results)} points")
         elif anomalies:
-            self.strategy.logger.warning(f"Found {len(anomalies)} anomalies in batch of {len(results)}. Anomaly Level: {level}")
-            print(f"\n--- [ANOMALY DETECTED] Found {len(anomalies)} outliers in batch of {len(results)}. Anomaly Level: {level}\\n")
-        else:
-            self.strategy.logger.info(f"Processed batch of {len(results)} points. Latest: {last_val}")
-            sys.stdout.write(f"\r--- [OK] Batch of {len(results)} points synced. Latest: {last_val}")
-        # self.strategy.logger.info(f"Processed batch of {results}")
-        sys.stdout.flush()
-
+            for result in anomalies:
+                timestamp = result.get("timestamp")
+                score = result.get("anomaly_score", result.get("score"))
+                self.source_logger.log_anomaly(
+                    batch_ids.get(timestamp, "unknown"),
+                    timestamp,
+                    result.get("val"),
+                    score,
+                )
+            self.strategy.logger.warning(
+                f"Anomalies detected: {len(anomalies)}/{len(results)} points; level={level}"
+            )
+        
     def calculate_precision(self, results, data_points, status):
         """Calculates precision based on the results and any available ground truth."""
         if status == "WARMUP":
             return
         for r, dp in zip(results, data_points[0].get("datapoints")):
             if r.get("is_anomaly") and dp.get("shouldbeAnomaly"):
-                print(f"True Positive: Detected {r['val']} as anomaly, which is correct.")
+                self.strategy.logger.info(f"True positive: detected {r['val']} as anomaly")
                 self.tp += 1
             elif not r.get("is_anomaly") and dp.get("shouldbeAnomaly"):
-                print(f"False Negative: Missed {r['val']} which is an anomaly.")
+                self.strategy.logger.warning(f"False negative: missed anomaly {r['val']}")
                 self.fn += 1
         precision = self.tp / (self.tp + self.fn) if (self.tp + self.fn) > 0 else 0
-        print(f"Precision: {precision:.2f} (TP: {self.tp}, `FN: {self.fn})")
+        self.strategy.logger.info(f"Recall: {precision:.2f} (TP: {self.tp}, FN: {self.fn})")
 
     def _decode_json(self, raw: bytes):
         s = raw.decode('utf-8')
@@ -234,13 +263,7 @@ class ZMQWorker:
             
             if datapoints:
                 return {"datapoints": datapoints}
-        except Exception as e:
-            if e.__class__.__name__ == "ImportError":
-                print(f"[DEBUG CRASH] Flatbuffer import failed: {e}. \
-                      Ensure the generated code after compiling the .fbs \
-                      is available from Anomaler/serialization/generated/python/Anomaler/Serialization.")
-                
-            print(f"[DEBUG CRASH] Flatbuffer unpack failed: {e}")
-            pass
+        except Exception:
+            logging.getLogger(__name__).exception("Could not decode FlatBuffers payload")
 
         return None

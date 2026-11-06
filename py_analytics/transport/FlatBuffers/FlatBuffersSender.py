@@ -14,7 +14,6 @@ class FlatBuffersSender:
         serialized_bytes = self.serialize(telemetry_batch)
 
         self.zmq_socket.send(serialized_bytes)
-        print(f"--- [INFO] Sent {len(datapoints)} datapoints over ZMQ socket.")
 
     def _create_batch(self, source_name: str, datapoints: list[dict]) -> tb.TelemetryBatchT:
         batch = tb.TelemetryBatchT()

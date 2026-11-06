@@ -33,15 +33,8 @@ class RuntimeManager:
     def run(self):
         while self.running:
             events = dict(self.poller.poll())
-            print(f"[MANAGER] Poller events: {events}")
 
             for socket, event in events.items():
-                print(
-                    f"[MANAGER] Event: socket={socket}, "
-                    f"event={event}, "
-                    f"is_discovery={socket is self.discovery_socket}, "
-                    f"is_group={socket in self.socket_to_group}"
-                )
 
                 if not (event & zmq.POLLIN):
                     continue
@@ -49,7 +42,6 @@ class RuntimeManager:
                 if socket is self.discovery_socket:
                     try:
                         msg = socket.recv_json(zmq.DONTWAIT)
-                        print(f"[MANAGER] Received message: {msg}")
                     except zmq.Again:
                         print("[MANAGER] Socket became unreadable")
                         continue
@@ -67,17 +59,12 @@ class RuntimeManager:
                     group = self.socket_to_group[socket]
                     receiver = self.socket_to_receiver.get(socket)
 
-                    # print(
-                    #     f"[MANAGER] GROUP SOCKET READABLE: "
-                    #     f"group={group.group_id}"
-                    # )
-
                     batch = receiver.receive()
 
-                    print(
-                        f"[MANAGER] Received batch from "
-                        f"group '{group.group_id}': {batch}"
-                    )
+                    # print(
+                    #     f"[MANAGER] Received batch from "
+                    #     f"group '{group.group_id}': {batch}"
+                    # )
                     
                     if batch is not None:
                         group.handle_worker_batch(batch)
@@ -110,23 +97,8 @@ class RuntimeManager:
             group_socket = self.zmqcontext.socket(zmq.PULL)
             group_socket.bind(f"tcp://{config.communication_host}:{config.communication_port}")
 
-            # print(
-            #     f"[MANAGER] PULL binding to "
-            #     f"tcp://{config.communication_host}:{config.communication_port}"
-            # )
-
             self.groups[group_id] = group
             self.poller.register(group_socket, zmq.POLLIN)
-
-            # print(
-            #     f"[MANAGER] Registered group socket: {group_socket}, "
-            #     f"FD={group_socket.getsockopt(zmq.FD)}"
-            # )
-
-            # print(
-            #     f"[MANAGER] Poller registrations: "
-            #     f"{self.poller._map}"
-            # )
 
             self.socket_to_group[group_socket] = group
             self.group_sockets[group_id] = group_socket

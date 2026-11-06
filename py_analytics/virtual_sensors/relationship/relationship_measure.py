@@ -27,13 +27,16 @@ class RelationshipMeasure(ABC):
         if period is None or period <= 0:
             raise ValueError("A positive synchronization.frequency is required for time-grid alignment")
         tolerance = self.group_config.alignment_tolerance
+
         if tolerance is None:
             tolerance = period / 2
+
         if tolerance < 0 or tolerance > period / 2:
             raise ValueError("synchronization.alignment_tolerance must be between 0 and half the grid period")
 
         window_size = max(1, self.group_config.pca_n_timestamps)
         timed_points = {}
+
         for source in data_sources:
             points = [
                 (self._to_epoch_seconds(point["timestamp"]), point["value"])
@@ -64,9 +67,11 @@ class RelationshipMeasure(ABC):
                 index = bisect_left(times, grid_time)
                 candidates = points[max(0, index - 1):min(len(points), index + 1)]
                 nearest = min(candidates, key=lambda item: abs(item[0] - grid_time))
+                
                 if abs(nearest[0] - grid_time) > tolerance:
                     break
                 selected[source] = nearest[1]
+
             if len(selected) == len(data_sources):
                 grid_timestamp = datetime.fromtimestamp(grid_time).isoformat(timespec="milliseconds")
                 for source in data_sources:
@@ -87,7 +92,13 @@ class RelationshipMeasure(ABC):
             return timestamp.timestamp()
         return datetime.fromisoformat(timestamp).timestamp()
 
-    def compute(self, data_sources: list[str], data_storage: GroupDataStorage, method: CorrelationMethod):
+    def compute(
+        self,
+        data_sources: list[str],
+        data_storage: GroupDataStorage,
+        method: CorrelationMethod,
+        prepared_data: dict[str, StreamSeries] | None = None,
+    ):
         """Find relationships between the given data sources.
 
         Args:

@@ -1,4 +1,7 @@
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class FlatBuffersReceiver:
     def __init__(self, zmq_socket):
@@ -52,11 +55,5 @@ class FlatBuffersReceiver:
             if datapoints:
                 return {"source_name": source_name, "datapoints": datapoints}
             
-        except Exception as e:
-            if e.__class__.__name__ == "ImportError":
-                print(f"[DEBUG CRASH] Flatbuffer import failed: {e}. \
-                        Ensure the generated code after compiling the .fbs \
-                        is available from Anomaler/serialization/generated/python/Anomaler/Serialization.")
-                
-            print(f"[DEBUG CRASH] Flatbuffer unpack failed: {e}")
-            pass
+        except Exception:
+            logger.exception("Could not decode FlatBuffers payload")
