@@ -41,7 +41,6 @@ def get_saved_models(folder_path: str, extension: str = "*.pkl", get_latest: boo
         return ""
     
     saves = []
-    print(folder_models)
     for folder_model in folder_models:
         saves.extend(list(folder_model.glob(extension)))
 

@@ -1,6 +1,9 @@
 from fractions import Fraction
 from functools import reduce
+import logging
 from math import gcd, lcm
+import os
+import re
 
 from dataclasses import dataclass, field
 
@@ -18,6 +21,19 @@ class GroupRuntime:
     stream_configs: dict[str, StreamConfig] = field(default_factory=dict)
     data_storage: GroupDataStorage = field(default_factory=GroupDataStorage)
     virtual_sensors: list = field(default_factory=list)
+
+    def _correlation_logger(self):
+        safe_group_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(self.group_id)).strip("._") or "group"
+        logger = logging.getLogger(f"py_analytics.correlation.{safe_group_id}")
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+        if not logger.handlers:
+            correlation_dir = os.path.join("logs", "analysis", "correlation")
+            os.makedirs(correlation_dir, exist_ok=True)
+            handler = logging.FileHandler(os.path.join(correlation_dir, f"correlation_{safe_group_id}.log"))
+            handler.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
+            logger.addHandler(handler)
+        return logger
 
     @property
     def periods(self) -> list[float]:
@@ -45,13 +61,10 @@ class GroupRuntime:
 
     def handle_worker_batch(self, batch):
         rel = PearsonCorrelation(self.config)
-        print(f"[RELATIONSHIP] Received {batch["source_name"]}")
-
         self.data_storage.add_source_data(batch["source_name"], batch["datapoints"])
 
         required_sources = list(self.config.connections or [])
         if len(required_sources) < 2:
-            print("[RELATIONSHIP] At least two configured sources are required")
             return
 
         window_size = max(1, self.config.pca_n_timestamps)
@@ -61,44 +74,35 @@ class GroupRuntime:
         if len(source_points) > max_points:
             self.data_storage.data[batch["source_name"]] = source_points[-max_points:]
 
-        print(
-            f"[RELATIONSHIP] Available sources: "
-            f"{set(self.data_storage.data.keys())}"
-        )
-
         if not all(
             source in self.data_storage.data
             for source in required_sources
         ):
-            print("[RELATIONSHIP] Waiting for all sources")
             return
-
-        print("[RELATIONSHIP] All required sources available")
-
-        for source in required_sources:
-            print(
-                f"[RELATIONSHIP] {source}: "
-                f"{len(self.data_storage.data[source])} points"
-            )
 
         prepared = rel.prepare(required_sources, self.data_storage)
         aligned_count = min((len(series) for series in prepared.values()), default=0)
         if aligned_count < window_size:
-            print(
-                f"[RELATIONSHIP] Waiting for aligned window: "
-                f"{aligned_count}/{window_size} shared timestamps"
-            )
             return
-
-        print("[RELATIONSHIP] Calling correlation")
 
         result = rel.compute(
             data_sources=list(required_sources),
             data_storage=self.data_storage,
             method="pairwise",
+            prepared_data=prepared,
         )
 
-        print(f"[RELATIONSHIP] RESULT: {result}")
+        logger = self._correlation_logger()
+        for (source_a, source_b), metrics in result.items():
+            logger.info(
+                "group=%s sources=%s,%s aligned_points=%d pearson_r=%.6f p_value=%.6g",
+                self.group_id,
+                source_a,
+                source_b,
+                aligned_count,
+                metrics["correlation"],
+                metrics["p_value"],
+            )
 
         return result
 

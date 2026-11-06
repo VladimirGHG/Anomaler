@@ -102,7 +102,7 @@ class IsolationForestStrategy(Strategy):
             # Still in Warmup
             for time_, v in new_values.items():
                 self.logger.debug(f"Processing value: {v} (WARMUP)")
-                results.append({"val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
+                results.append({"timestamp": time_, "val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
         else:
             # Model is ready, predict the batch
             pred_start_time = time.time()
@@ -126,9 +126,9 @@ class IsolationForestStrategy(Strategy):
                     comp_time = pred_start_time
 
                 total_process_time = (pred_start_time - comp_time) + i * on_each_time # Approximate the time taken for the entire process of this value.
-                print(f"[PREDICTION] Value: {v}, Score: {score:.4f}, Processed in: {total_process_time:.4f}s")
                 is_anomaly = score < self.score_threshold
                 results.append({
+                    "timestamp": time_,
                     "val": v,
                     "is_anomaly": is_anomaly,
                     "anomaly_score": float(score),

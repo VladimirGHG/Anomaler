@@ -39,12 +39,13 @@ class RiverStrategy(Strategy):
             if self.count < self.window_size:
                 self.model.learn_one(feature_dict)
                 results.append(
-                    {"val": v, "is_anomaly": False, "score": -1, "status": "WARMUP"})
+                    {"timestamp": time_, "val": v, "is_anomaly": False, "score": -1, "status": "WARMUP"})
                 self.count += 1
             else:
                 score = self.model.score_one(feature_dict)
                 self.model.learn_one(feature_dict)
                 results.append({
+                    "timestamp": time_,
                     "val": v,
                     "is_anomaly": score > 0.7,
                     "score": score,
