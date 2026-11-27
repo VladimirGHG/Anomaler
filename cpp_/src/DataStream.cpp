@@ -57,7 +57,7 @@ std::string DataStream::toJson(bool pretty, long long limit) const {
     return pretty ? j.dump(4) : j.dump();
 }
 
-std::vector<uint8_t> DataStream::toFlatBuffers(long long limit) const {
+std::vector<uint8_t> DataStream::toFlatBuffers(long long limit, std::string source_name) const {
     size_t total = dataPoints.size();
     size_t count = (limit > 0 && (size_t)limit < total) ? (size_t)limit : total;
     size_t start_idx = total - count;
@@ -120,7 +120,9 @@ std::vector<uint8_t> DataStream::toFlatBuffers(long long limit) const {
 
     // Wrap the entire batch inside a single TelemetryBatch array mapping
     auto batch_vector = builder.CreateVector(messages_vector);
-    auto batch_root = Anomaler::Serialization::CreateTelemetryBatch(builder, batch_vector);
+    auto source_n = builder.CreateString(source_name);
+
+    auto batch_root = Anomaler::Serialization::CreateTelemetryBatch(builder, source_n, batch_vector);
     
     builder.Finish(batch_root);
 

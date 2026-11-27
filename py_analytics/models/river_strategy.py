@@ -18,10 +18,10 @@ class RiverStrategy(Strategy):
         # The model is "fitted" if it has processed at least one full window
         return self.count >= self.window_size
     
-    def process_batch(self, mad, median, new_values) -> list[dict]:
+    def process_batch(self, mad, median, new_values: list[tuple[object, float]]) -> list[dict]:
 
         results = []
-        for time_, v in new_values.items():
+        for time_, v in new_values:
             feature_dict = {"v": v}
             self.drift_detector.update(v)
 

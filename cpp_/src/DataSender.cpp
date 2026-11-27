@@ -9,8 +9,8 @@
 #include <cstring>
 #include <cstdlib>
 
-DataSender::DataSender(const std::string& endpoint, SerializationProtocol protocol)
-    : context(1), stream(), socket(context, zmq::socket_type::push), serialization_protocol(protocol) {
+DataSender::DataSender(const std::string& endpoint, SerializationProtocol protocol, const std::string& source_name)
+    : context(1), stream(), socket(context, zmq::socket_type::push), serialization_protocol(protocol), source_name(source_name) {
     
     socket.bind(endpoint);
 }
@@ -69,7 +69,7 @@ int DataSender::sendBinary(int batch_size, bool clear_after_send) {
         batch_size = 1; 
     }
 
-    std::vector<uint8_t> payload = stream.toFlatBuffers(batch_size);
+    std::vector<uint8_t> payload = stream.toFlatBuffers(batch_size, source_name);
     
     zmq::message_t message(payload.size());
     std::memcpy(message.data(), payload.data(), payload.size());

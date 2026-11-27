@@ -26,13 +26,13 @@ class IsolationForestStrategy(Strategy):
         self.min_retrain_interval_s = 30 # Minimum time interval in seconds between retraining events to avoid excessive retraining in rapid succession.
         self._last_retrain_time = 0
 
-    def process_batch(self, mad, median, new_values) -> list[dict]:
-        self.data_buffer.extend(list(new_values.values()))
+    def process_batch(self, mad, median, new_values: list[tuple[object, float]]) -> list[dict]:
+        self.data_buffer.extend(value for _, value in new_values)
 
         if len(self.data_buffer) > self.max_buffer_size:
             self.data_buffer = self.data_buffer[-self.max_buffer_size:]
 
-        for time_, v in new_values.items():
+        for time_, v in new_values:
             self.drift_detector.update(v)
             if self.drift_detector.drift_detected:
 
@@ -100,20 +100,20 @@ class IsolationForestStrategy(Strategy):
         results = []
         if not self.is_fitted:
             # Still in Warmup
-            for time_, v in new_values.items():
+            for time_, v in new_values:
                 self.logger.debug(f"Processing value: {v} (WARMUP)")
                 results.append({"timestamp": time_, "val": v, "is_anomaly": False, "anomaly_level": -1, "status": "WARMUP"})
         else:
             # Model is ready, predict the batch
             pred_start_time = time.time()
-            X_batch = np.array(list(new_values.values())).reshape(-1, 1)
+            X_batch = np.array([value for _, value in new_values]).reshape(-1, 1)
             scores = self.model.score_samples(X_batch)
             pred_end_time = time.time()
             total_pred_time = pred_end_time - pred_start_time
             time_format = "%Y-%m-%d %H:%M:%S.%f"
             on_each_time = total_pred_time / len(new_values) if new_values else 0
 
-            for i, ((time_, v), score) in enumerate(zip(new_values.items(), scores)):
+            for i, ((time_, v), score) in enumerate(zip(new_values, scores)):
                 try:
                     if isinstance(time_, (int, float)):
                         comp_time = float(time_)

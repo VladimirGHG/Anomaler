@@ -43,7 +43,7 @@ class Strategy(ABC):
         self.logger = ModelLogger(self.uid)
 
     @abstractmethod
-    def process_batch(self, mad, median, new_values: dict[str, int]) -> list[dict]:
+    def process_batch(self, mad, median, new_values: list[tuple[object, float]]) -> list[dict]:
         """Processes a batch of values. Handles its own printing."""
         pass
     
