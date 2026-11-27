@@ -14,15 +14,16 @@ class DataSender {
 private:
     zmq::context_t context;
 public:
-    DataStream stream; // Made public for direct access in main.cpp, but can be refactored to use getter/setter if needed
+    DataStream stream;
     zmq::socket_t socket;
 
     enum class SerializationProtocol { JSON, FLATBUFFERS };    
 
     SerializationProtocol serialization_protocol;
-
-    int sendBatch(int batch_size, bool clear_after_send = true); // Unified method to send batches without conditional branches
-    DataSender(const std::string& endpoint, SerializationProtocol protocol);
+    std::string source_name;
+    
+    int sendBatch(int batch_size, bool clear_after_send = true);
+    DataSender(const std::string& endpoint, SerializationProtocol protocol, const std::string& source_name);
     int sendJson(int batch_size=1, bool clear_after_send=true);
     int sendBinary(int batch_size=1, bool clear_after_send=true);
 };

@@ -7,14 +7,12 @@ from datetime import datetime
 import zmq
 import numpy as np
 
-from ..models.base import Strategy
 from ..config.worker_context import WorkerContext
 from ..models.factory import create_strategy
 from ..model_logger import ModelLogger
 from ..sensor_logger import SensorLogger
-from ..serialization.generated.python.Anomaler.Serialization import TelemetryBatch
 from ..transport.FlatBuffers.FlatBuffersSender import FlatBuffersSender
-from ..serialization.generated.python.Anomaler.Serialization import TelemetryMessage
+from .buffer_scrap_methods.greedy_read import greedy_read
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTER_DIR = os.path.dirname(BASE_DIR)
@@ -37,12 +35,7 @@ class ZMQWorker:
         self.receiver.connect(f"tcp://127.0.0.1:{self.port}")
         self.batch_id = 0
 
-        self.all_new_values = {}
-
-        # print(
-        #     f"[WORKER] PUSH connecting to "
-        #     f"tcp://{self.communication_host}:{group_runtime_port}"
-        # )
+        self.all_new_values = []
 
         group_runtime_sender = context.socket(zmq.PUSH)
         group_runtime_sender.connect(f"tcp://{self.communication_host}:{group_runtime_port}")
@@ -80,97 +73,98 @@ class ZMQWorker:
             self.func = self._decode_json
 
     def get_median_mad(self, data_points: list[int]):
-        arr = np.asanyarray(data_points) # Convert to numpy array for faster calculations and less memory usasge
+        arr = np.asarray(data_points, dtype=float)
+        arr = arr[np.isfinite(arr)]
+        if arr.size == 0:
+            return
         self.median = np.median(arr)
         self.mad = np.median(np.abs(arr - self.median)) * 1.4826 # A scaling factor to make MAD comparable to STD for normal data distributions
     
     def start(self):
 
+        if self.load_path:
+            if self.strategy is None:
+                raise ValueError("Cannot load a model when no strategy is configured")
+            loaded_strategy = self.strategy.load_model(self.load_path)
+            if loaded_strategy.name != self.strategy.name:
+                raise ValueError(f"Loaded strategy {loaded_strategy.name!r} does not match configured strategy {self.strategy.name!r}")
+            self.strategy = loaded_strategy
+            sensor_name = self._stream_config.source_name
+            self.strategy.logger = ModelLogger(
+                f"{sensor_name}_{self.strategy.name}_v{self.strategy.version}_{self.strategy.config_hash[:8]}"
+            )
+
         while True:
             if os.getppid() == 1: break
             # Check if there is data
             if self.receiver.poll(1000):
-                batch_of_packets = []
-                
-                # Greedy Read: Grab everything currently in the ZeroMQ buffer
-                while True:
-                    try:
-                        raw = self.receiver.recv(flags=zmq.NOBLOCK)
+                batch_of_packets, status = greedy_read(self.receiver, self.func)
 
-                        packet = self.func(raw)
-                        if packet:
-                            # print(packet)
-                            batch_of_packets.append(packet)
-                    except zmq.Again:
-                        break # Queue is empty
-                
-                new_values = {}
-                batch_ids = {}
-                for received_packet in batch_of_packets:
-                    received_id = received_packet.get("ID", self.batch_id)
-                    if received_id != self.batch_id:
-                        message = f"Batch sequence gap: received {received_id}, expected {self.batch_id}"
-                        if self.strategy is not None:
-                            self.strategy.logger.warning(message)
-                        else:
-                            logging.getLogger(__name__).warning(message)
+                if status == 0:
+                    new_values = []
+                    batch_ids = []
+                    for received_packet in batch_of_packets:
+                        received_id = received_packet.get("ID", self.batch_id)
+                        if received_id != self.batch_id:
+                            message = f"Batch sequence gap: received {received_id}, expected {self.batch_id}"
+                            if self.strategy is not None:
+                                self.strategy.logger.warning(message)
+                            else:
+                                logging.getLogger(__name__).warning(message)
+                            continue
+                        self.batch_id += 1
+                        for datapoint in received_packet.get("datapoints", []):
+                            timestamp = datapoint["timestamp"]
+                            value = datapoint["value"]
+                            new_values.append((timestamp, value))
+                            batch_ids.append(received_id)
+                            self.source_logger.log_datapoint(received_id, timestamp, value)
+
+                    if not new_values:
                         continue
-                    self.batch_id += 1
-                    for datapoint in received_packet.get("datapoints", []):
-                        timestamp = datapoint["timestamp"]
-                        value = datapoint["value"]
-                        new_values[timestamp] = value
-                        batch_ids[timestamp] = received_id
-                        self.source_logger.log_datapoint(received_id, timestamp, value)
 
-                if not new_values:
-                    continue
+                    self.all_new_values.extend(
+                        {"timestamp": timestamp, "value": value}
+                        for timestamp, value in new_values
+                    )
 
-                self.all_new_values.update(new_values)
+                    if self.flatBuffersSender and len(self.all_new_values) >= self.pca_n_timestamps:
+                        self.flatBuffersSender.send(self._stream_config.source_name, self.all_new_values)
+                        self.all_new_values = []
 
-                if self.flatBuffersSender and len(self.all_new_values) >= self.pca_n_timestamps:
-                    self.flatBuffersSender.send(self._stream_config.source_name, [{"timestamp": ts, "value": val} for ts, val in self.all_new_values.items()])
-                    self.all_new_values = {}
-
-                if self.strategy == None:
-                    continue
-                else:
-                    if self.strategy.name == "SKlearnIsolatedForest":
-                        if new_values:
-                            # Calculate the current median and MAD
+                    if self.strategy == None:
+                        continue
+                    else:
+                        if self.strategy.name == "SKlearnIsolatedForest" and self.strategy.data_buffer:
                             self.get_median_mad(self.strategy.data_buffer)
-                    
-                    results = []
-
-                    # If a model loading path was provided when the worker was created, than load the model.
-                    if self.load_path:
-                        self.strategy.model = self.strategy.load_model(self.load_path)
                         
-                    # If there are newly received data points process them and report the results.
-                    if new_values:
-                        results = self.strategy.process_batch(self.mad, self.median, new_values)
-                        self.report(results, batch_ids)
+                        results = []
+                            
+                        # If there are newly received data points process them and report the results.
+                        if new_values:
+                            results = self.strategy.process_batch(self.mad, self.median, new_values)
+                            self.report(results, batch_ids)
 
-                    # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
-                    # Elif last snapshot was made more than SELF.SAVE_EVERY seconds ago, save it.
-                    if self.strategy.last_save_time is None:
-                        self.strategy.last_save_time = time.time()
-                    elif time.time() - self.strategy.last_save_time > self.save_every: # Save every X seconds 
-                        if self.strategy.model_snapshot >= self.max_snapshots: # Keep only last Y snapshots
-                            self.strategy.model_snapshot = 0
-                            self.strategy.logger.info(
-                                f"Snapshot limit ({self.max_snapshots}) reached; rotating snapshots"
-                            )
+                        # If the current model with which the ZMQWorker works does not have a set last_save_time of the model, set it.
+                        # Elif last snapshot was made more than SELF.SAVE_EVERY seconds ago, save it.
+                        if self.strategy.last_save_time is None:
+                            self.strategy.last_save_time = time.time()
+                        elif time.time() - self.strategy.last_save_time > self.save_every: # Save every X seconds 
+                            if self.strategy.model_snapshot >= self.max_snapshots: # Keep only last Y snapshots
+                                self.strategy.model_snapshot = 0
+                                self.strategy.logger.info(
+                                    f"Snapshot limit ({self.max_snapshots}) reached; rotating snapshots"
+                                )
 
-                        os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
-                        self.strategy.save_model(os.path.join(MODELS_DIR, self.strategy.name))
-                        self.strategy.last_save_time = time.time()
-                        self.strategy.model_snapshot += 1
+                            os.makedirs(MODELS_DIR, exist_ok=True) # Double check it exists
+                            self.strategy.save_model(os.path.join(MODELS_DIR, self.strategy.name))
+                            self.strategy.last_save_time = time.time()
+                            self.strategy.model_snapshot += 1
 
-                    # if results:
-                    #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
+                        # if results:
+                        #     self.calculate_precision(results, batch_of_packets, results[-1].get("status"))
 
-    def report(self, results: list[dict], batch_ids: dict):
+    def report(self, results: list[dict], batch_ids: list[int]):
         """Write anomaly events and concise model summaries to their logs."""
         if not results:
             return
@@ -184,11 +178,13 @@ class ZMQWorker:
         if status == "WARMUP":
             self.strategy.logger.info(f"Warmup: processed {len(results)} points")
         elif anomalies:
-            for result in anomalies:
+            for index, result in enumerate(results):
+                if not result.get("is_anomaly"):
+                    continue
                 timestamp = result.get("timestamp")
                 score = result.get("anomaly_score", result.get("score"))
                 self.source_logger.log_anomaly(
-                    batch_ids.get(timestamp, "unknown"),
+                    batch_ids[index] if index < len(batch_ids) else "unknown",
                     timestamp,
                     result.get("val"),
                     score,

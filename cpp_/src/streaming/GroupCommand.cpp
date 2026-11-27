@@ -63,7 +63,9 @@ int run_group(const GroupOptions& opts) {
             }
             
             zmq::context_t context(1);
-            perform_group_manager_handshake(context, group_options);
+            if (!perform_group_manager_handshake(context, group_options)) {
+                return 1;
+            }
 
             for (const auto& entry : sources) {
                 std::string source_name = entry.first.as<std::string>();
